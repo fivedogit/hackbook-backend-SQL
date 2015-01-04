@@ -1248,87 +1248,88 @@ public class Endpoint extends HttpServlet {
 											}
 											else if (method.equals("submitChatMessage"))
 											{
-													 String message = request.getParameter("message");
-													 if(message != null && message.isEmpty())
-													 {
-														 jsonresponse.put("message", "Message was empty.");
-														 jsonresponse.put("response_status", "error"); 
-													 }
-													 else
-													 {
-														 Chat ci = new Chat();
-														 long now0 = System.currentTimeMillis();
-														 String now_str = Global.fromDecimalToBase62(7,now0);
-														 Random generator = new Random(); 
-														 int r = generator.nextInt(238327); // this will produce numbers that can be represented by 3 base62 digits
-														 String randompart_str = Global.fromDecimalToBase62(3,r);
-														 String message_id = now_str + randompart_str;
-														 ci.setId(message_id);
-														 ci.setUserId(useritem.getId());
-														 ci.setHostname("news.ycombinator.com");
-														 ci.setMSFE(now0);
-														 ci.setText(message);
-														 session.save(ci);
-														 jsonresponse.put("response_status", "success");
-														 
-														 // if there is valid chat, attach it to the response
-														 HashSet<Chat> chat = getChat(session); // 3 days in minutes
-														 if(!(chat == null || chat.isEmpty()))
-														 { 
-															 Iterator<Chat> chat_it = chat.iterator();
-															 Chat currentitem = null;
-															 JSONArray chat_ja = new JSONArray();
-															 while(chat_it.hasNext())
-															 {
-																 currentitem = chat_it.next();
-																 chat_ja.put(currentitem.getJSON());
-															 }
-															 jsonresponse.put("chat_ja", chat_ja);
-														 }
-														 
-														 Pattern pattern = Pattern.compile(".*@[A-Za-z_\\-].*");
-														 Matcher matcher = pattern.matcher(message);
-														 
-														 if(matcher.matches())
+												 String message = request.getParameter("message");
+												 if(message != null && message.isEmpty())
+												 {
+													 jsonresponse.put("message", "Message was empty.");
+													 jsonresponse.put("response_status", "error"); 
+												 }
+												 else
+												 {
+													 Chat ci = new Chat();
+													 long now0 = System.currentTimeMillis();
+													 String now_str = Global.fromDecimalToBase62(7,now0);
+													 Random generator = new Random(); 
+													 int r = generator.nextInt(238327); // this will produce numbers that can be represented by 3 base62 digits
+													 String randompart_str = Global.fromDecimalToBase62(3,r);
+													 String message_id = now_str + randompart_str;
+													 ci.setId(message_id);
+													 ci.setUserId(useritem.getId());
+													 ci.setHostname("news.ycombinator.com");
+													 ci.setMSFE(now0);
+													 ci.setText(message);
+													 session.save(ci);
+													 jsonresponse.put("response_status", "success");
+													 
+													 // if there is valid chat, attach it to the response
+													 HashSet<Chat> chat = getChat(session); // 3 days in minutes
+													 if(!(chat == null || chat.isEmpty()))
+													 { 
+														 Iterator<Chat> chat_it = chat.iterator();
+														 Chat currentitem = null;
+														 JSONArray chat_ja = new JSONArray();
+														 while(chat_it.hasNext())
 														 {
-															 System.out.println("Chat message from " + useritem.getId() + " contains an @ followed by a [A-Za-z\\-_] char.");
-															 TreeSet<User> mentioned_registered_users = getMentionedUsers(message, session);
-															 Iterator<User> mentionedusers_it = mentioned_registered_users.iterator();
-															 User mentioneduser = null;
-															 long now1 = 0L;
-															 while(mentionedusers_it.hasNext())
-															 {
-																 mentioneduser = mentionedusers_it.next();
-																 now1 = System.currentTimeMillis();
-																 now_str = Global.fromDecimalToBase62(7,now1);
-																 r = generator.nextInt(238327); // this will produce numbers that can be represented by 3 base62 digits
-																 randompart_str = Global.fromDecimalToBase62(3,r);
-																 String notification_id = now_str + randompart_str + "C"; 
-																	
-																 Notification ai = new Notification(); 
-																 ai.setId(notification_id);
-																 ai.setActionMSFE(now0); // the chat item got added slightly before this notification item.
-																 ai.setMSFE(now1);
-																 ai.setUserId(mentioneduser.getId());
-																 ai.setType("C");
-																 //ai.setHNTargetId(null);
-																 ai.setTriggerer(useritem.getId());
-																 //ai.setHNRootStoryId();
-																 //ai.setHNRootCommentId();
-																 session.save(ai);
-																 
-																 TreeSet<String> notificationset = new TreeSet<String>();
-																 if(mentioneduser.getNotificationIds() != null)
-																	 notificationset.addAll(mentioneduser.getNotificationIds());
-																 notificationset.add(notification_id);
-																 while(notificationset.size() > Global.NOTIFICATIONS_SIZE_LIMIT)
-															    		notificationset.remove(notificationset.first());
-																 mentioneduser.setNotificationIds(notificationset);
-																 mentioneduser.setNotificationCount(mentioneduser.getNotificationCount()+1);
-																 session.save(mentioneduser);
-															 }
+															 currentitem = chat_it.next();
+															 chat_ja.put(currentitem.getJSON());
+														 }
+														 jsonresponse.put("chat_ja", chat_ja);
+													 }
+													 
+													 Pattern pattern = Pattern.compile(".*@[A-Za-z_\\-].*");
+													 Matcher matcher = pattern.matcher(message);
+													 
+													 if(matcher.matches())
+													 {
+														 System.out.println("Chat message from " + useritem.getId() + " contains an @ followed by a [A-Za-z\\-_] char.");
+														 TreeSet<User> mentioned_registered_users = getMentionedUsers(message, useritem, session);
+														 Iterator<User> mentionedusers_it = mentioned_registered_users.iterator();
+														 User mentioneduser = null;
+														 long now1 = 0L;
+														 while(mentionedusers_it.hasNext())
+														 {
+															 mentioneduser = mentionedusers_it.next();
+															 
+															 now1 = System.currentTimeMillis();
+															 now_str = Global.fromDecimalToBase62(7,now1);
+															 r = generator.nextInt(238327); // this will produce numbers that can be represented by 3 base62 digits
+															 randompart_str = Global.fromDecimalToBase62(3,r);
+															 String notification_id = now_str + randompart_str + "C"; 
+																
+															 Notification ai = new Notification(); 
+															 ai.setId(notification_id);
+															 ai.setActionMSFE(now0); // the chat item got added slightly before this notification item.
+															 ai.setMSFE(now1);
+															 ai.setUserId(mentioneduser.getId());
+															 ai.setType("C");
+															 //ai.setHNTargetId(null);
+															 ai.setTriggerer(useritem.getId());
+															 //ai.setHNRootStoryId();
+															 //ai.setHNRootCommentId();
+															 session.save(ai);
+															 
+															 TreeSet<String> notificationset = new TreeSet<String>();
+															 if(mentioneduser.getNotificationIds() != null)
+																 notificationset.addAll(mentioneduser.getNotificationIds());
+															 notificationset.add(notification_id);
+															 while(notificationset.size() > Global.NOTIFICATIONS_SIZE_LIMIT)
+														    		notificationset.remove(notificationset.first());
+															 mentioneduser.setNotificationIds(notificationset);
+															 mentioneduser.setNotificationCount(mentioneduser.getNotificationCount()+1);
+															 session.save(mentioneduser);
 														 }
 													 }
+												 }
 											}
 											else if (method.equals("getChat"))
 											{
@@ -1519,7 +1520,7 @@ public class Endpoint extends HttpServlet {
 		return matcher.matches();
 	}
 
-	public TreeSet<User> getMentionedUsers(String text, Session session)
+	public TreeSet<User> getMentionedUsers(String text, User useritem, Session session)
 	{
 		TreeSet<User> mentioned_users = null;
 		 if(text.indexOf("@") != -1) // there might be an @ mention here
@@ -1542,16 +1543,43 @@ public class Endpoint extends HttpServlet {
 				 while(it.hasNext())
 				 {
 					 currentmatch = it.next();
-					 User mentioned_user = (User)session.get(User.class, currentmatch);
-					 if(mentioned_user != null && mentioned_user.getRegistered())
+					 if(currentmatch.equals("everyone"))
 					 {
-						 if(mentioned_users == null)
-							 mentioned_users = new TreeSet<User>();
-						 mentioned_users.add(mentioned_user);
+						 // Note that this works in terms of alerting everyone, but it kinda breaks the chat pane for fivedogit. Not worth fixing at the moment.
+						 if(useritem.getId().equals("fivedogit")) // only do this for God
+						 {	 
+							// from here, we can safely assume users will be added. There are ALWAYS registered users.
+							 if(mentioned_users == null)
+								 mentioned_users = new TreeSet<User>();
+							 
+							 String hql = "FROM User U WHERE U.registered=true";
+							 Query query = session.createQuery(hql);
+							 @SuppressWarnings("unchecked")
+							 List<User> useritems = query.list();
+									 
+							 for (User u : useritems) {
+								 if(!u.getId().equals(useritem.getId())) // don't alert self
+								 {
+									 System.out.println("Endpoint.getMentionedUsers(): adding " + u.getId());
+									 mentioned_users.add(u);
+								 }
+							 }
+						 }
 					 }
 					 else
-					 {
-						 //System.out.println(" ... not found. Dud.");
+					 {	 
+						 User mentioned_user = (User)session.get(User.class, currentmatch);
+						 if(mentioned_user != null && mentioned_user.getRegistered())
+						 {
+							 if(mentioned_users == null)
+								 mentioned_users = new TreeSet<User>();
+							 System.out.println("Endpoint.getMentionedUsers(): adding " + mentioned_user.getId());
+							 mentioned_users.add(mentioned_user);
+						 }
+						 else
+						 {
+							 //System.out.println(" ... not found. Dud.");
+						 }
 					 }
 				 }
 			 }
