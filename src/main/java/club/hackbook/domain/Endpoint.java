@@ -715,7 +715,7 @@ public class Endpoint extends HttpServlet {
 												}
 												
 												// check if there is lingering karma in the user's karma pool and report it, if so
-												if(useritem.getKarmaPool() != 0L || (useritem.getLastKarmaPoolDrain() < (System.currentTimeMillis() - (useritem.getKarmaPoolTTLMins()*60000)))) 
+												if(useritem.getKarmaPool() != 0L && (useritem.getLastKarmaPoolDrain() < (System.currentTimeMillis() - (useritem.getKarmaPoolTTLMins()*60000)))) 
 												{
 													  long change = useritem.getKarmaPool();
 													  System.out.print("*** Endpoint.getUserSelf() found lingering karma in pool outside of karma pooling ttl. Reporting change " + change + " for " + useritem.getId());
