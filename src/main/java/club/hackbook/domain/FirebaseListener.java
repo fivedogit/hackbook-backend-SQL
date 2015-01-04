@@ -74,12 +74,12 @@ public class FirebaseListener implements ServletContextListener {
  					 {
  						 if(firebase_last_msfe_gvi.getNumberValue() > System.currentTimeMillis()-150000) 
  						 {
- 							 System.out.println("*** I do NOT have the power2! *** myId=" + myId + " owner=" + firebase_owner_id_gvi.getStringValue() + " firebase_last_msfe is " + (System.currentTimeMillis()-firebase_last_msfe_gvi.getNumberValue()) + " old.");
+ 							 System.out.println("*** I do NOT have the power (SQL)! *** myId=" + myId + " owner=" + firebase_owner_id_gvi.getStringValue() + " firebase_last_msfe is " + (System.currentTimeMillis()-firebase_last_msfe_gvi.getNumberValue()) + " old.");
  							 ihavethepower = false;
  						 }
  						 else
  						 {
- 							 System.out.println("*** I DO have the power! (takeover) *** myId=" + myId + " owner=" + firebase_owner_id_gvi.getStringValue() + " firebase_last_msfe is " + (System.currentTimeMillis()-firebase_last_msfe_gvi.getNumberValue()) + " old.");
+ 							 System.out.println("*** I DO have the power (SQL)! (takeover) *** myId=" + myId + " owner=" + firebase_owner_id_gvi.getStringValue() + " firebase_last_msfe is " + (System.currentTimeMillis()-firebase_last_msfe_gvi.getNumberValue()) + " old.");
  							 firebase_owner_id_gvi.setStringValue(myId);
  							 firebase_last_msfe_gvi.setNumberValue(now);
  							 SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
@@ -92,7 +92,7 @@ public class FirebaseListener implements ServletContextListener {
  					 }
  					 else // if(firebase_owner_id_gvi.getStringValue().equals(myId))
  					 {
- 						 System.out.println("*** I DO have the power! (keep) *** myId=" + myId + " owner=" + firebase_owner_id_gvi.getStringValue() + " firebase_last_msfe is " + (System.currentTimeMillis()-firebase_last_msfe_gvi.getNumberValue()) + " old.");
+ 						 System.out.println("*** I DO have the power! (SQL) (keep) *** myId=" + myId + " owner=" + firebase_owner_id_gvi.getStringValue() + " firebase_last_msfe is " + (System.currentTimeMillis()-firebase_last_msfe_gvi.getNumberValue()) + " old.");
  						 firebase_owner_id_gvi.setStringValue(myId);
  						 firebase_last_msfe_gvi.setNumberValue(System.currentTimeMillis());
  						 SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
