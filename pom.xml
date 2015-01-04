@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>club.hackbook</groupId>
-  <artifactId>hackbook-backend-MySQLHibernate</artifactId>
+  <artifactId>hackbook-backend-SQL</artifactId>
   <version>0.0.1</version>
   <packaging>war</packaging>
 
@@ -60,7 +60,7 @@
   </dependencies>
   
   <build>
-		<finalName>hackbook-backend-MySQLHibernate</finalName>
+		<finalName>hackbook-backend-SQL</finalName>
  
 		<plugins>
 		    <!-- Eclipse project -->
@@ -94,7 +94,7 @@
 			<artifactId>tomcat7-maven-plugin</artifactId>
 			<version>2.2</version>
 			<configuration>
-				<path>/hackbook-backend-MySQLHibernate</path>
+				<path>/hackbook-backend-SQL</path>
 			</configuration>
 		  </plugin>
  
