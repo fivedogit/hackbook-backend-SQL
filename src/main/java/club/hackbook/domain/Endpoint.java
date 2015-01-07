@@ -1053,10 +1053,16 @@ public class Endpoint extends HttpServlet {
 																 {	 
 																	 Iterator<String> it = notification_item_ts.iterator();
 																	 Notification ni = null;
+																	 String current_notification_id = null;
 																	 while(it.hasNext())
 																	 {
-																		 ni = (Notification)session.get(Notification.class, it.next());
-																		 if(ni.getType().equals("0") && ni.getTriggerer().equals(useritem.getId()))
+																		 current_notification_id = it.next();
+																		 System.out.println("current_notifcation_id=" + current_notification_id);
+																		 ni = (Notification)session.get(Notification.class, current_notification_id);
+																		 if(ni.getType().equals("0") && 
+																				 ni.getTriggerer().equals(
+																						 useritem.getId()
+																						 ))
 																		 {
 																			 System.out.println("***" + target_useritem.getId() + " has already been notified that " + useritem.getId() + " is following them!");
 																			 already_notified = true;
@@ -1544,6 +1550,8 @@ public class Endpoint extends HttpServlet {
 				 while(it.hasNext())
 				 {
 					 currentmatch = it.next();
+					 /*
+					 Be careful what you're doing here. Last time it created a bunch of phantom notifications that didn't actually get created in the Notifications table. 
 					 if(currentmatch.equals("everyone"))
 					 {
 						 // Note that this works in terms of alerting everyone, but it kinda breaks the chat pane for fivedogit. Not worth fixing at the moment.
@@ -1568,7 +1576,7 @@ public class Endpoint extends HttpServlet {
 						 }
 					 }
 					 else
-					 {	 
+					 {	*/ 
 						 User mentioned_user = (User)session.get(User.class, currentmatch);
 						 if(mentioned_user != null && mentioned_user.getRegistered())
 						 {
@@ -1581,7 +1589,7 @@ public class Endpoint extends HttpServlet {
 						 {
 							 //System.out.println(" ... not found. Dud.");
 						 }
-					 }
+					// }
 				 }
 			 }
 			 else

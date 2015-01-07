@@ -5,6 +5,7 @@ import java.text.SimpleDateFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.TimeZone;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -12,6 +13,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+import club.hackbook.domain.Notification;
 import club.hackbook.domain.User;
 import club.hackbook.util.HibernateUtil;
 
@@ -63,6 +65,72 @@ public class MySQLDBTools {
 		if(registered_users == null)
 			registered_users = getRegisteredUsers();
 		return registered_users.size();
+	}
+	
+	public void findNotificationIdsThatDontExist()
+	{
+		Set<String> notifications_for_current_user = null;
+		HashSet<String> notifications_that_dont_exist = new HashSet<String>();
+		Notification current_notification = null;
+		Session session = HibernateUtil.getSessionFactory().openSession();
+		Transaction tx = null; 
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
+		sdf.setTimeZone(TimeZone.getTimeZone("America/New_York"));
+		try
+		{
+			 tx = session.beginTransaction();
+			 String hql = "FROM User U WHERE U.registered=true";
+			 Query query = session.createQuery(hql);
+			 @SuppressWarnings("unchecked")
+			 List<User> useritems = query.list();
+			 
+			 
+			 if (useritems != null && useritems.size() > 0) {
+				 for (User u : useritems) {
+					 notifications_that_dont_exist = new HashSet<String>();
+					 System.out.println("since=" + u.getSinceHumanReadable() + " since=" + u.getSince() + " seen=" + u.getSeenHumanReadable() + "  seen=" + u.getSeen() + " ext_version=" + u.getExtVersion() + " id=" + u.getId());
+					 
+					 for(String s: u.getNotificationIds())
+					 {
+						 System.out.print("\t" + s);
+						 current_notification = (Notification)session.get(Notification.class, s);
+						 if(current_notification == null)
+						 {
+							 System.out.println(" DOES NOT EXIST!");
+							 notifications_that_dont_exist.add(s);
+						 }
+						 else
+							 System.out.println(" EXISTS!");
+					 }
+					 
+					 notifications_for_current_user = u.getNotificationIds();
+					 for(String s: notifications_that_dont_exist)
+					 {
+						 System.out.println(" Removing " + s);
+						 notifications_for_current_user.remove(s);
+						 u.setNotificationIds(notifications_for_current_user);
+						 session.save(u);
+					 }
+				 }
+			 } else {
+				 return;
+			 }
+			 tx.commit();
+		}
+		catch (Exception e) {
+			if (tx!=null) tx.rollback();
+			e.printStackTrace();
+		}
+		finally {
+			session.close();
+		}
+		
+		for(String s: notifications_that_dont_exist)
+		{
+			System.out.println(s);
+		}
+		
+		System.out.println("exiting findNotificationIdsThatDontExist.");
 	}
 	
 	public void printRegisteredUsers()
@@ -276,7 +344,7 @@ public class MySQLDBTools {
 		// TODO Auto-generated method stub
 
 		MySQLDBTools dbt = new MySQLDBTools();
-		dbt.printUsersBeingFollowedByAtLeastOnePerson();
+		dbt.findNotificationIdsThatDontExist();
 		System.out.println("Exiting main.");
 	}
 
