@@ -174,6 +174,7 @@ public class Endpoint extends HttpServlet {
 	
 	private HashSet<Item> getHNItemsFromURL(String url_str, Session session) 
 	{
+		// FIXME -- if I url has a "'", this breaks, I think. Check it out.
 		String hql = "FROM Item I WHERE I.url='" + url_str + "'";
 		Query query = session.createQuery(hql);
 		@SuppressWarnings("unchecked")

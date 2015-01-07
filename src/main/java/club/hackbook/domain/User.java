@@ -57,6 +57,7 @@ public class User implements java.lang.Comparable<User> {
 	private Long last_karma_pool_drain = 0L;// pool the karma changes together, then unload it all at once.
 	private Long karma_pool_ttl_mins = 0L;
 	private Long hn_since = 0L;
+	private Integer UTC_offset = -8;
 	
 	private boolean registered = false;
 	private boolean hide_embedded_counts = true;
@@ -153,6 +154,9 @@ public class User implements java.lang.Comparable<User> {
 	public String getExtVersion() {return ext_version; }  
 	public void setExtVersion(String ext_version) { this.ext_version = ext_version; }
 	
+	public Integer getUTCOffset() {return UTC_offset; }
+	public void setUTCOffset(Integer UTC_offset) { this.UTC_offset = UTC_offset; }
+	
 	public boolean isValid(String inc_this_access_token)
 	{
 		if(inc_this_access_token == null || getThisAccessToken() == null)
@@ -208,6 +212,7 @@ public class User implements java.lang.Comparable<User> {
 			user_jo.put("hide_inline_follow", this.getHideInlineFollow());	
 			user_jo.put("hide_deep_reply_notifications", this.getHideDeepReplyNotifications());	
 			user_jo.put("hide_promo_links", this.getHidePromoLinks());
+			user_jo.put("UTC_offset", this.getUTCOffset());
 			
 		} catch (JSONException e) {
 			// TODO Auto-generated catch block
