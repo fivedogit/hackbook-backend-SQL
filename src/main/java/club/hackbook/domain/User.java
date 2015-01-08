@@ -7,12 +7,14 @@ import java.util.List;
 import java.util.Set;
 import java.util.TimeZone;
 
+import javax.persistence.CollectionTable;
 import javax.persistence.Column;
 import javax.persistence.ElementCollection;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Lob;
 import javax.persistence.Table;
+import javax.persistence.UniqueConstraint;
 
 import org.hibernate.Query;
 import org.hibernate.Session;
@@ -39,12 +41,16 @@ public class User implements java.lang.Comparable<User> {
 	private String ext_version;
 	
 	@ElementCollection
+	@CollectionTable(uniqueConstraints = {@UniqueConstraint(columnNames={"User_id", "notification_ids"})})
 	private Set<String> notification_ids;
 	@ElementCollection
+	@CollectionTable(uniqueConstraints = {@UniqueConstraint(columnNames={"User_id", "newsfeed_ids"})})
 	private Set<String> newsfeed_ids;
 	@ElementCollection
+	@CollectionTable(uniqueConstraints = {@UniqueConstraint(columnNames={"User_id", "followers"})})
 	private Set<String> followers;
 	@ElementCollection
+	@CollectionTable(uniqueConstraints = {@UniqueConstraint(columnNames={"User_id", "following"})})
 	private Set<String> following;
 	
 	private Long since = 0L;

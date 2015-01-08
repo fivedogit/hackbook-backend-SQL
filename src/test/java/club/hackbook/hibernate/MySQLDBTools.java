@@ -2,9 +2,15 @@ package club.hackbook.hibernate;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.HashMap;
 import java.util.List;
 import java.util.HashSet;
 import java.util.TimeZone;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 
 import club.hackbook.domain.User;
 import club.hackbook.util.HibernateUtil;
@@ -75,12 +81,17 @@ public class MySQLDBTools {
 			 
 			 if (useritems != null && useritems.size() > 0) {
 				 for (User u : useritems) {
-					 if(u.getExtVersion() == null || u.getExtVersion().equals("null"))
-					 { 
-						 u.setExtVersion("0.231");
-						 session.save(u);
-					 }
 					 System.out.println("since=" + u.getSinceHumanReadable() + " since=" + u.getSince() + " seen=" + u.getSeenHumanReadable() + "  seen=" + u.getSeen() + " ext_version=" + u.getExtVersion() + " id=" + u.getId());
+					 System.out.println("Followers:");
+					 for(String s: u.getFollowers())
+					 {
+						 System.out.println("\t" + s);
+					 }
+					 System.out.println("Following:");
+					 for(String s: u.getFollowing())
+					 {
+						 System.out.println("\t" + s);
+					 }
 				 }
 			 } else {
 				 return;
@@ -97,6 +108,72 @@ public class MySQLDBTools {
 		
 		System.out.println("exiting printRegisteredUsers.");
 	}
+	
+	public void printUsersBeingFollowedByAtLeastOnePerson()
+	{
+		HashSet<String> pairs_set = new HashSet<String>();
+		Connection conn = null;
+		ResultSet rs = null;
+		Statement stmt = null;
+		try {
+		    conn =
+		       DriverManager.getConnection("jdbc:mysql://secure.hackbook.club/hackbook?" +
+		                                   "user=&password=");
+
+		    stmt = conn.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_UPDATABLE);
+			String query = "SELECT * FROM User_followers";
+			rs = stmt.executeQuery(query);
+			while(rs.next())
+			{
+				if(pairs_set.contains(rs.getString(1) + "ASDHFH2342aASDae32gas3w3asvx" + rs.getString(2)))
+				{
+					// delete this row
+					System.out.println("\t\t\t\t\t\tDeleting " + rs.getString(1) + "-" + rs.getString(2));
+					rs.deleteRow();
+				}
+				else
+				{
+					// keep this row, add 
+					System.out.println("Keeping " + rs.getString(1) + "-" + rs.getString(2));
+					pairs_set.add(rs.getString(1) + "ASDHFH2342aASDae32gas3w3asvx" + rs.getString(2));
+				}
+			} 
+			rs.close();
+			stmt.close();
+			conn.close();
+
+		} catch (SQLException ex) {
+		    // handle any errors
+		    System.out.println("SQLException: " + ex.getMessage());
+		    System.out.println("SQLState: " + ex.getSQLState());
+		    System.out.println("VendorError: " + ex.getErrorCode());
+		}
+		finally
+		{
+			try
+			{
+				if (rs  != null)
+					rs.close();
+				if (stmt  != null)
+					stmt.close();
+				if (conn  != null)
+					conn.close();
+			}
+			catch(SQLException sqle)
+			{
+				System.out.println("There was a problem closing the resultset, statement and/or connection to the database.");
+			}
+		}   	
+						
+		for(String s: pairs_set)
+		{
+			System.out.println(s);
+		}
+		
+		
+		System.out.println("exiting printUsersBeingFollowedByAtLeastOnePerson.");
+	}
+	
 	
 	public HashSet<User> getRegisteredUsers() { 
 		Session session = HibernateUtil.getSessionFactory().openSession();
@@ -199,7 +276,7 @@ public class MySQLDBTools {
 		// TODO Auto-generated method stub
 
 		MySQLDBTools dbt = new MySQLDBTools();
-		dbt.printRegisteredUsers();
+		dbt.printUsersBeingFollowedByAtLeastOnePerson();
 		System.out.println("Exiting main.");
 	}
 
