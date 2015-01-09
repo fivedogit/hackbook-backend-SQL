@@ -716,6 +716,11 @@ public class Endpoint extends HttpServlet {
 												}
 												
 												// check if there is lingering karma in the user's karma pool and report it, if so
+												
+												// a note about this: If we got rid of getKarmaPool and setKarmaPool and merely reported karma_from_HNAPI - useritem.getKarma(), that would work
+												// but then at this point we'd need to check the HNAPI every time the user's karma pool drain TTL had expired to see if the numbers are different.
+												// One possibility would be to have a karma_has_changed boolean property of User rather than trying to keep track of the pool.
+												
 												if(useritem.getKarmaPool() != 0L && (useritem.getLastKarmaPoolDrain() < (System.currentTimeMillis() - (useritem.getKarmaPoolTTLMins()*60000)))) 
 												{
 													  long change = useritem.getKarmaPool();
@@ -1300,40 +1305,43 @@ public class Endpoint extends HttpServlet {
 													 {
 														 System.out.println("Chat message from " + useritem.getId() + " contains an @ followed by a [A-Za-z\\-_] char.");
 														 TreeSet<User> mentioned_registered_users = getMentionedUsers(message, useritem, session);
-														 Iterator<User> mentionedusers_it = mentioned_registered_users.iterator();
-														 User mentioneduser = null;
-														 long now1 = 0L;
-														 while(mentionedusers_it.hasNext())
-														 {
-															 mentioneduser = mentionedusers_it.next();
-															 
-															 now1 = System.currentTimeMillis();
-															 now_str = Global.fromDecimalToBase62(7,now1);
-															 r = generator.nextInt(238327); // this will produce numbers that can be represented by 3 base62 digits
-															 randompart_str = Global.fromDecimalToBase62(3,r);
-															 String notification_id = now_str + randompart_str + "C"; 
-																
-															 Notification ai = new Notification(); 
-															 ai.setId(notification_id);
-															 ai.setActionMSFE(now0); // the chat item got added slightly before this notification item.
-															 ai.setMSFE(now1);
-															 ai.setUserId(mentioneduser.getId());
-															 ai.setType("C");
-															 //ai.setHNTargetId(null);
-															 ai.setTriggerer(useritem.getId());
-															 //ai.setHNRootStoryId();
-															 //ai.setHNRootCommentId();
-															 session.save(ai);
-															 
-															 TreeSet<String> notificationset = new TreeSet<String>();
-															 if(mentioneduser.getNotificationIds() != null)
-																 notificationset.addAll(mentioneduser.getNotificationIds());
-															 notificationset.add(notification_id);
-															 while(notificationset.size() > Global.NOTIFICATIONS_SIZE_LIMIT)
-														    		notificationset.remove(notificationset.first());
-															 mentioneduser.setNotificationIds(notificationset);
-															 mentioneduser.setNotificationCount(mentioneduser.getNotificationCount()+1);
-															 session.save(mentioneduser);
+														 if(mentioned_registered_users != null && !mentioned_registered_users.isEmpty())
+														 {	 
+															 Iterator<User> mentionedusers_it = mentioned_registered_users.iterator();
+															 User mentioneduser = null;
+															 long now1 = 0L;
+															 while(mentionedusers_it.hasNext())
+															 {
+																 mentioneduser = mentionedusers_it.next();
+																 
+																 now1 = System.currentTimeMillis();
+																 now_str = Global.fromDecimalToBase62(7,now1);
+																 r = generator.nextInt(238327); // this will produce numbers that can be represented by 3 base62 digits
+																 randompart_str = Global.fromDecimalToBase62(3,r);
+																 String notification_id = now_str + randompart_str + "C"; 
+																	
+																 Notification ai = new Notification(); 
+																 ai.setId(notification_id);
+																 ai.setActionMSFE(now0); // the chat item got added slightly before this notification item.
+																 ai.setMSFE(now1);
+																 ai.setUserId(mentioneduser.getId());
+																 ai.setType("C");
+																 //ai.setHNTargetId(null);
+																 ai.setTriggerer(useritem.getId());
+																 //ai.setHNRootStoryId();
+																 //ai.setHNRootCommentId();
+																 session.save(ai);
+																 
+																 TreeSet<String> notificationset = new TreeSet<String>();
+																 if(mentioneduser.getNotificationIds() != null)
+																	 notificationset.addAll(mentioneduser.getNotificationIds());
+																 notificationset.add(notification_id);
+																 while(notificationset.size() > Global.NOTIFICATIONS_SIZE_LIMIT)
+															    		notificationset.remove(notificationset.first());
+																 mentioneduser.setNotificationIds(notificationset);
+																 mentioneduser.setNotificationCount(mentioneduser.getNotificationCount()+1);
+																 session.save(mentioneduser);
+															 }
 														 }
 													 }
 												 }
@@ -1444,7 +1452,7 @@ public class Endpoint extends HttpServlet {
 			jsone.printStackTrace();
 			return;
 		}	
-		if(true)//Global.devel == true) // getUserSelf is too noisy, so ignore it
+		if(!method.equals("getChat"))//Global.devel == true) // getUserSelf is too noisy, so ignore it
 			System.out.println("response=" + jsonresponse);	// respond with object, success response, or error 
 		out.println(jsonresponse);	
 		return; 	
@@ -1587,7 +1595,7 @@ public class Endpoint extends HttpServlet {
 						 }
 						 else
 						 {
-							 //System.out.println(" ... not found. Dud.");
+							 System.out.println(" ... not found. Dud.");
 						 }
 					// }
 				 }

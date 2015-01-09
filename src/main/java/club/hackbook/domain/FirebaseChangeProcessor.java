@@ -290,16 +290,9 @@ public class FirebaseChangeProcessor extends java.lang.Thread {
 											  useritem.setKarmaPoolTTLMins(ttl);
 										  }
 										  
-										  if(useritem.getLastKarmaPoolDrain() != null)
-										  {
-											  System.out.println("\tKARMA CHANGE! old_karma=" + old_karma + " new_karma=" + new_karma + " change=" + (new_karma - old_karma));
-											  System.out.println("\tpool=" + useritem.getKarmaPool() + " Last drain=" + useritem.getLastKarmaPoolDrain() + " now=" + System.currentTimeMillis() + " diff=" + ((System.currentTimeMillis() - useritem.getLastKarmaPoolDrain())/60000) + " ttl=" + ttl);
-											  System.out.println("\tis Last drain=" + useritem.getLastKarmaPoolDrain() + " < cutoff=" + (System.currentTimeMillis() - (ttl*60000L)));
-										  }
-										  
 										  if(useritem.getLastKarmaPoolDrain() == null || (useritem.getLastKarmaPoolDrain() < (System.currentTimeMillis() - (ttl*60000L)))) // it's been more than ttl minutes
 										  {
-											  long change = useritem.getKarmaPool() + (new_karma - old_karma);
+											  long change = new_karma - old_karma;
 											  System.out.print("\treporting change " + change + " if the user is registered");
 											  if(useritem.getRegistered()) // this change in karma for this firebase increment (30 sec) + the total change in the karma pool (10 mins) cancel each other out.
 											  {											  // create notification only if registered

@@ -133,6 +133,145 @@ public class MySQLDBTools {
 		System.out.println("exiting findNotificationIdsThatDontExist.");
 	}
 	
+	public void findFollowingFollowerInconsistencies()
+	{
+		User current_followee = null;
+		Session session = HibernateUtil.getSessionFactory().openSession();
+		Transaction tx = null; 
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
+		sdf.setTimeZone(TimeZone.getTimeZone("America/New_York"));
+		try
+		{
+			 tx = session.beginTransaction();
+			 String hql = "FROM User U WHERE U.registered=true";
+			 Query query = session.createQuery(hql);
+			 @SuppressWarnings("unchecked")
+			 List<User> useritems = query.list();
+			 
+			 
+			 if (useritems != null && useritems.size() > 0) {
+				 for (User u : useritems) {
+					 System.out.println("since=" + u.getSinceHumanReadable() + " since=" + u.getSince() + " seen=" + u.getSeenHumanReadable() + "  seen=" + u.getSeen() + " ext_version=" + u.getExtVersion() + " id=" + u.getId());
+					 
+					 for(String s: u.getFollowing())
+					 {
+						 System.out.print("\t" + s);
+						 current_followee = (User)session.get(User.class, s);
+						 if(current_followee == null)
+						 {
+							 System.out.println(" DOES NOT EXIST!");
+						 }
+						 else
+						 {
+							 System.out.println(" EXISTS! Does u.getId()=" + u.getId() + " appear in this user's follwers list?");
+							 if(current_followee.getFollowers().contains(u.getId()))
+							 {
+								 //System.out.println(" YES. All good.");
+							 }
+							 else
+							 {
+								 System.out.println("\t\t\tNO. That's bad.");
+							 }
+						 }
+					 }
+				 }
+			 } else {
+				 return;
+			 }
+			 tx.commit();
+		}
+		catch (Exception e) {
+			if (tx!=null) tx.rollback();
+			e.printStackTrace();
+		}
+		finally {
+			session.close();
+		}
+		
+		System.out.println("exiting findFollowingFollowerInconsistencies.");
+	}
+	
+	public void findFollowerFollowingInconsistencies()
+	{
+		User current_follower = null;
+		Set<String> current_set_of_followers = null;
+		Session session = HibernateUtil.getSessionFactory().openSession();
+		Transaction tx = null; 
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
+		sdf.setTimeZone(TimeZone.getTimeZone("America/New_York"));
+		try
+		{
+			 tx = session.beginTransaction();
+			 String hql = "FROM User U";
+			 Query query = session.createQuery(hql);
+			 @SuppressWarnings("unchecked")
+			 List<User> useritems = query.list();
+			 
+			 int x = 0;
+			 if (useritems != null && useritems.size() > 0) {
+				 for (User u : useritems) {
+					 if(x < 10)
+					 {
+						 System.out.print(u.getId());
+						 x++;
+					 }
+					 else
+					 {
+						 System.out.println(u.getId());
+						 x = 0;
+					 }
+					// System.out.println("since=" + u.getSinceHumanReadable() + " since=" + u.getSince() + " seen=" + u.getSeenHumanReadable() + "  seen=" + u.getSeen() + " ext_version=" + u.getExtVersion() + " id=" + u.getId());
+					 current_set_of_followers = u.getFollowers();
+					 if(current_set_of_followers == null)
+					 {	 
+						 System.out.print(" NULL   ");
+					 }
+					 else if(current_set_of_followers.isEmpty())
+					 {
+						 System.out.print(" EMPTY   ");
+					 }
+					 else
+					 { 
+						 System.out.println();
+						 for(String s: current_set_of_followers)
+						 {
+							 System.out.print("\t" + s);
+							 current_follower = (User)session.get(User.class, s);
+							 if(current_follower == null)
+							 {
+								 System.out.println(" DOES NOT EXIST!");
+							 }
+							 else
+							 {
+								 System.out.println(" EXISTS! Does u.getId()=" + u.getId() + " appear in this user's following list?");
+								 if(current_follower.getFollowing().contains(u.getId()))
+								 {
+									 System.out.println("\t\t\tYES. All good.");
+								 }
+								 else
+								 {
+									 System.out.println("\t\t\tNO. That's bad.");
+								 }
+							 }
+						 }
+					 }
+				 }
+			 } else {
+				 return;
+			 }
+			 tx.commit();
+		}
+		catch (Exception e) {
+			if (tx!=null) tx.rollback();
+			e.printStackTrace();
+		}
+		finally {
+			session.close();
+		}
+		
+		System.out.println("exiting findFollowerFollowingInconsistencies.");
+	}
+	
 	public void printRegisteredUsers()
 	{
 		Session session = HibernateUtil.getSessionFactory().openSession();
@@ -149,17 +288,7 @@ public class MySQLDBTools {
 			 
 			 if (useritems != null && useritems.size() > 0) {
 				 for (User u : useritems) {
-					 System.out.println("since=" + u.getSinceHumanReadable() + " since=" + u.getSince() + " seen=" + u.getSeenHumanReadable() + "  seen=" + u.getSeen() + " ext_version=" + u.getExtVersion() + " id=" + u.getId());
-					 System.out.println("Followers:");
-					 for(String s: u.getFollowers())
-					 {
-						 System.out.println("\t" + s);
-					 }
-					 System.out.println("Following:");
-					 for(String s: u.getFollowing())
-					 {
-						 System.out.println("\t" + s);
-					 }
+					 System.out.println("since=" + u.getSinceHumanReadable() + " since=" + u.getSince() + " seen=" + u.getSeenHumanReadable() + "  seen=" + u.getSeen() + " ext_version=" + u.getExtVersion() + " hec=" + u.getHideEmbeddedCounts() + " id=" + u.getId());
 				 }
 			 } else {
 				 return;
@@ -344,7 +473,7 @@ public class MySQLDBTools {
 		// TODO Auto-generated method stub
 
 		MySQLDBTools dbt = new MySQLDBTools();
-		dbt.findNotificationIdsThatDontExist();
+		dbt.printRegisteredUsers();
 		System.out.println("Exiting main.");
 	}
 
