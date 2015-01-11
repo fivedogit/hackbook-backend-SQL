@@ -695,52 +695,47 @@ public class Endpoint extends HttpServlet {
 													SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
 													sdf.setTimeZone(TimeZone.getTimeZone("America/New_York"));
 													useritem.setSeenHumanReadable(sdf.format(timestamp_at_entry));
-													
-													// Also update karma here, although FirebaseListener should be keeping track of all changes.
-													// so this is not entirely necessary. It's only necessary if FBL isn't doing its job (i.e. missing karma changes)
+												}
+												
+												// If user's karma pool TTL has expired, check to see if their karma has changed.
+												if(useritem.getLastKarmaPoolDrain() < (System.currentTimeMillis() - (useritem.getKarmaPoolTTLMins()*60000))) 
+												{
+													// FIXME this should be spun off asynchronously.
 													try{
 														String result = Jsoup
-															 .connect("https://hacker-news.firebaseio.com/v0/user/" + screenname  + ".json")
-															 .userAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.104 Safari/537.36")
-															 .ignoreContentType(true).execute().body();
+																.connect("https://hacker-news.firebaseio.com/v0/user/" + screenname  + ".json")
+																.userAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.104 Safari/537.36")
+																.ignoreContentType(true).execute().body();
 														JSONObject hn_user_jo = new JSONObject(result);
 														if(hn_user_jo.has("karma"))
-															useritem.setHNKarma(hn_user_jo.getLong("karma"));
+														{
+															if(useritem.getHNKarma() != hn_user_jo.getLong("karma"))
+															{
+																long change = hn_user_jo.getLong("karma") - useritem.getHNKarma();
+																System.out.print("*** Endpoint.getUserSelf() found lingering karma in pool outside of karma pooling ttl. Reporting change " + change + " for " + useritem.getId());
+																FirebaseChangeProcessor fcp = new FirebaseChangeProcessor(null);
+																if(change > 0L)
+																{
+																	System.out.println("\tcalling createNotification for positive change.");
+																	fcp.createNotification(useritem, "1", 0L, System.currentTimeMillis(), null, change, session); // feedable event 1, positive karma change
+																}
+																else if(change < 0L)				
+																{
+																	System.out.println("\tcalling createNotification for negative change.");
+																	fcp.createNotification(useritem, "2", 0L, System.currentTimeMillis(), null, change, session); // feedable event 2, negative karma change
+																}
+																useritem.setHNKarma(hn_user_jo.getLong("karma"));
+																useritem.setLastKarmaPoolDrain(System.currentTimeMillis());
+																something_needs_updating = true;
+															}
+														}
 													}
 													catch(IOException ioe){
 														//
 													}
 													catch(JSONException jsone){
 														//
-													}									
-												}
-												
-												// check if there is lingering karma in the user's karma pool and report it, if so
-												
-												// a note about this: If we got rid of getKarmaPool and setKarmaPool and merely reported karma_from_HNAPI - useritem.getKarma(), that would work
-												// but then at this point we'd need to check the HNAPI every time the user's karma pool drain TTL had expired to see if the numbers are different.
-												// One possibility would be to have a karma_has_changed boolean property of User rather than trying to keep track of the pool.
-												
-												if(useritem.getKarmaPool() != 0L && (useritem.getLastKarmaPoolDrain() < (System.currentTimeMillis() - (useritem.getKarmaPoolTTLMins()*60000)))) 
-												{
-													  long change = useritem.getKarmaPool();
-													  System.out.print("*** Endpoint.getUserSelf() found lingering karma in pool outside of karma pooling ttl. Reporting change " + change + " for " + useritem.getId());
-													  FirebaseChangeProcessor fcp = new FirebaseChangeProcessor(null);
-													  if(change > 0L)
-													  {
-														  System.out.println("\tcalling createNotification for positive change.");
-														  fcp.createNotification(useritem, "1", 0L, System.currentTimeMillis(), null, change, session); // feedable event 1, positive karma change
-													  }
-													  else if(change < 0L)				
-													  {
-														  System.out.println("\tcalling createNotification for negative change.");
-														  fcp.createNotification(useritem, "2", 0L, System.currentTimeMillis(), null, change, session); // feedable event 2, negative karma change
-													  }
-													  // regardless, empty the pool and set new timestamp
-													  useritem.setHNKarma(useritem.getHNKarma() + change);
-													  useritem.setKarmaPool(0L);
-													  useritem.setLastKarmaPoolDrain(System.currentTimeMillis());
-													  something_needs_updating = true;
+													}			
 												}
 
 												if(something_needs_updating)

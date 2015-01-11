@@ -281,7 +281,7 @@ public class MySQLDBTools {
 		try
 		{
 			 tx = session.beginTransaction();
-			 String hql = "FROM User U WHERE U.registered=true ORDER BY U.ext_version";
+			 String hql = "FROM User U WHERE U.registered=true ORDER BY U.seen";
 			 Query query = session.createQuery(hql);
 			 @SuppressWarnings("unchecked")
 			 List<User> useritems = query.list();

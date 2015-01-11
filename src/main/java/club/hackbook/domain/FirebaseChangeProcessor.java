@@ -314,13 +314,13 @@ public class FirebaseChangeProcessor extends java.lang.Thread {
 											  }
 											  // regardless, empty the pool and set new timestamp
 											  useritem.setHNKarma(new_karma);
-											  useritem.setKarmaPool(0L);
+											  //useritem.setKarmaPool(0L);
 											  useritem.setLastKarmaPoolDrain(System.currentTimeMillis());
 										  }
 										  else
 										  {
 											  System.out.println("\tWAITING to report change.");
-											  useritem.setKarmaPool(useritem.getKarmaPool() + (new_karma - old_karma));
+											 // useritem.setKarmaPool(useritem.getKarmaPool() + (new_karma - old_karma));
 										  }
 										  saveuseritem = true;
 									  }

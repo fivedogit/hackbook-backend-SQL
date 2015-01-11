@@ -59,7 +59,7 @@ public class User implements java.lang.Comparable<User> {
 	private Long newsfeed_count = 0L;
 	private Long this_access_token_expires = 0L;
 	private Long hn_karma = 0L;   // this is set on login and every 20 minutes by getUserSelf
-	private Long karma_pool = 0L;			// rather than produce a NotificationItem every 30 seconds, let's wait some period of time
+	//private Long karma_pool = 0L;			// rather than produce a NotificationItem every 30 seconds, let's wait some period of time
 	private Long last_karma_pool_drain = 0L;// pool the karma changes together, then unload it all at once.
 	private Long karma_pool_ttl_mins = 0L;
 	private Long hn_since = 0L;
@@ -136,8 +136,8 @@ public class User implements java.lang.Comparable<User> {
 	public Set<String> getFollowing() { return following; }
 	public void setFollowing(Set<String> following) { this.following = following; }
 		
-	public Long getKarmaPool() { return karma_pool; }
-	public void setKarmaPool(Long karma_pool) { this.karma_pool = karma_pool; }
+	//public Long getKarmaPool() { return karma_pool; }
+	//public void setKarmaPool(Long karma_pool) { this.karma_pool = karma_pool; }
 	
 	public Long getLastKarmaPoolDrain() {return last_karma_pool_drain; }
 	public void setLastKarmaPoolDrain(Long last_karma_pool_drain) { this.last_karma_pool_drain = last_karma_pool_drain; }
