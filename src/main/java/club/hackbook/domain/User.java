@@ -63,10 +63,10 @@ public class User implements java.lang.Comparable<User> {
 	private Long last_karma_pool_drain = 0L;// pool the karma changes together, then unload it all at once.
 	private Long karma_pool_ttl_mins = 0L;
 	private Long hn_since = 0L;
-	private Integer UTC_offset = -8;
+	//private Integer UTC_offset = -8;
 	
 	private boolean registered = false;
-	private boolean hide_embedded_counts = true;
+	//private boolean hide_embedded_counts = true;
 	private boolean hide_inline_follow = false;
 	private boolean hide_deep_reply_notifications = false;
 	private boolean hide_promo_links = false;
@@ -145,8 +145,8 @@ public class User implements java.lang.Comparable<User> {
 	public Long getKarmaPoolTTLMins() { return karma_pool_ttl_mins; }
 	public void setKarmaPoolTTLMins(Long karma_pool_ttl_mins) { this.karma_pool_ttl_mins = karma_pool_ttl_mins; }
 	
-	public boolean getHideEmbeddedCounts() {return hide_embedded_counts; }  
-	public void setHideEmbeddedCounts(boolean hide_embedded_counts) { this.hide_embedded_counts = hide_embedded_counts; }
+	//public boolean getHideEmbeddedCounts() {return hide_embedded_counts; }  
+	//public void setHideEmbeddedCounts(boolean hide_embedded_counts) { this.hide_embedded_counts = hide_embedded_counts; }
 	
 	public boolean getHideInlineFollow() {return hide_inline_follow; }  
 	public void setHideInlineFollow(boolean hide_inline_follow) { this.hide_inline_follow = hide_inline_follow; }
@@ -160,8 +160,8 @@ public class User implements java.lang.Comparable<User> {
 	public String getExtVersion() {return ext_version; }  
 	public void setExtVersion(String ext_version) { this.ext_version = ext_version; }
 	
-	public Integer getUTCOffset() {return UTC_offset; }
-	public void setUTCOffset(Integer UTC_offset) { this.UTC_offset = UTC_offset; }
+	//public Integer getUTCOffset() {return UTC_offset; }
+	//public void setUTCOffset(Integer UTC_offset) { this.UTC_offset = UTC_offset; }
 	
 	public boolean isValid(String inc_this_access_token)
 	{
@@ -214,11 +214,11 @@ public class User implements java.lang.Comparable<User> {
 				user_jo.put("notification_ids", getNotificationIds());
 			if(getNewsfeedIds() != null && !getNewsfeedIds().isEmpty())
 				user_jo.put("newsfeed_ids", getNewsfeedIds());
-			user_jo.put("hide_embedded_counts", this.getHideEmbeddedCounts());
+			user_jo.put("hide_embedded_counts", true); // this is obsolete and can be deleted after a while (Today is Jan 13, 2015)
 			user_jo.put("hide_inline_follow", this.getHideInlineFollow());	
 			user_jo.put("hide_deep_reply_notifications", this.getHideDeepReplyNotifications());	
 			user_jo.put("hide_promo_links", this.getHidePromoLinks());
-			user_jo.put("UTC_offset", this.getUTCOffset());
+			//user_jo.put("UTC_offset", this.getUTCOffset());
 			
 		} catch (JSONException e) {
 			// TODO Auto-generated catch block

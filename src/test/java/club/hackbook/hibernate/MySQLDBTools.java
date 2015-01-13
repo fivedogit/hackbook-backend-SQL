@@ -47,7 +47,6 @@ public class MySQLDBTools {
 	    		useritem.setRegistered(false);
 	    		useritem.setURLCheckingMode("stealth");
 	    		useritem.setKarmaPoolTTLMins(15L);
-	    		useritem.setHideEmbeddedCounts(true);
 	    		if(profile_jo.has("about"))
 	    			useritem.setHNAbout(profile_jo.getString("about"));
 	    		else
@@ -288,7 +287,7 @@ public class MySQLDBTools {
 			 
 			 if (useritems != null && useritems.size() > 0) {
 				 for (User u : useritems) {
-					 System.out.println("since=" + u.getSinceHumanReadable() + " since=" + u.getSince() + " seen=" + u.getSeenHumanReadable() + "  seen=" + u.getSeen() + " ext_version=" + u.getExtVersion() + " hec=" + u.getHideEmbeddedCounts() + " id=" + u.getId());
+					 System.out.println("since=" + u.getSinceHumanReadable() + " since=" + u.getSince() + " seen=" + u.getSeenHumanReadable() + "  seen=" + u.getSeen() + " ext_version=" + u.getExtVersion() + " id=" + u.getId());
 				 }
 			 } else {
 				 return;

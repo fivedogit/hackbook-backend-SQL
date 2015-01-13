@@ -767,7 +767,6 @@ public class FirebaseChangeProcessor extends java.lang.Thread {
     		useritem.setRegistered(false);
     		useritem.setURLCheckingMode("stealth");
     		useritem.setKarmaPoolTTLMins(15L);
-    		useritem.setHideEmbeddedCounts(true);
     		if(profile_jo.has("about"))
     			useritem.setHNAbout(profile_jo.getString("about"));
     		else

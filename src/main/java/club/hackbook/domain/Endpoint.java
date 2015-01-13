@@ -337,7 +337,6 @@ public class Endpoint extends HttpServlet {
 									 {
 										 useritem = new User();
 										 useritem.setRegistered(false); 
-										 useritem.setHideEmbeddedCounts(true);
 									 }
 									 useritem.setId(screenname);
 									 String uuid = UUID.randomUUID().toString().replaceAll("-","");
@@ -456,7 +455,6 @@ public class Endpoint extends HttpServlet {
 																	 useritem.setSinceHumanReadable(sdf.format(now));
 																	 useritem.setRegistered(true);
 																	 useritem.setURLCheckingMode("stealth");
-																	 useritem.setHideEmbeddedCounts(true);
 																 }
 																 if(topcolor != null && isValidTopcolor(topcolor))
 																	 useritem.setHNTopcolor(topcolor);
@@ -803,19 +801,11 @@ public class Endpoint extends HttpServlet {
 																 }
 															 }
 														 }
-														 else if(which.equals("hide_embedded_counts") || which.equals("hide_inline_follow") || which.equals("hide_deep_reply_notifications") || which.equals("hide_promo_links")) 
+														 else if(which.equals("hide_inline_follow") || which.equals("hide_deep_reply_notifications") || which.equals("hide_promo_links")) 
 														 {
 															 if(value.equals("show") || value.equals("hide"))
 															 {
-																 if(which.equals("hide_embedded_counts"))
-																 {
-																	 if(value.equals("show"))
-																		 useritem.setHideEmbeddedCounts(false);
-																	 else
-																		 useritem.setHideEmbeddedCounts(true);
-																 }
-																 
-																 else if(which.equals("hide_inline_follow"))
+																 if(which.equals("hide_inline_follow"))
 																 {
 																	 if(value.equals("show"))
 																		 useritem.setHideInlineFollow(false);
@@ -1193,44 +1183,6 @@ public class Endpoint extends HttpServlet {
 																 if(new_newsfeedset.isEmpty())
 																	 new_newsfeedset = null;
 																 useritem.setNewsfeedIds(new_newsfeedset);
-																 
-																 /*String table1Name = "hackbook_notifications2";
-																 HashMap<String, KeysAndAttributes> requestItems = new HashMap<String, KeysAndAttributes>();
-																 ArrayList<Map<String, AttributeValue>> keys1 = new ArrayList<Map<String, AttributeValue>>();
-																 HashMap<String, AttributeValue> table1key1 = null;
-																 while(newsfeed_it.hasNext())
-																 {	 
-																	 table1key1 = new HashMap<String, AttributeValue>();
-																	 table1key1.put("id", new AttributeValue().withS(newsfeed_it.next()));
-																	 keys1.add(table1key1);
-																 }
-																 requestItems.put(table1Name, new KeysAndAttributes().withKeys(keys1));    	
-																 BatchGetItemRequest batchGetItemRequest = new BatchGetItemRequest().withRequestItems(requestItems);
-																 BatchGetItemResult result = client.batchGetItem(batchGetItemRequest);
-																 List<Map<String,AttributeValue>> table1Results = result.getResponses().get(table1Name);
-																 System.out.println("Items in table " + table1Name);
-																 //Notification ni = null;
-																 for (Map<String,AttributeValue> item : table1Results) {
-																	 if(!item.get("triggerer").getS().equals(target_screenname)) // only keep the ones that weren't triggered by the user that just got unfollowed
-																	 {	 
-																		 // don't have to actually create the Notification here, but leave this for cut paste later.
-																		 // ni = new Notification();
-																		 //ni.setId(item.get("id").getS());
-																		 //ni.setUserId(item.get("user_id").getS());
-																		 //ni.setType(item.get("type").getS());
-																		 //ni.setTriggerer(item.get("triggerer").getS());
-																		 //ni.setActionMSFE(Long.parseLong(item.get("action_msfe").getN()));
-																		 //ni.setMSFE(Long.parseLong(item.get("msfe").getN()));
-																		 //ni.setHNTargetId(Long.parseLong(item.get("hn_target_id").getN()));
-																		 //ni.setHNRootStoryId(Long.parseLong(item.get("hn_root_story_id").getN()));
-																		 //ni.setHNRootCommentId(Long.parseLong(item.get("hn_root_comment_id").getN()));
-																		 //ni.setKarmaChange(Integer.parseInt(item.get("karma_change").getN()));
-																		 new_newsfeedset.add(item.get("id").getS());
-																	 }
-																 }
-																 if(new_newsfeedset.isEmpty())
-																	 new_newsfeedset = null;
-																 useritem.setNewsfeedIds(new_newsfeedset);*/
 															 }
 															 session.save(useritem);
 															 // 1. we don't have to check NotificationIds because this is an unfollow which only affects newsfeed items.
@@ -1479,7 +1431,6 @@ public class Endpoint extends HttpServlet {
 					 target_useritem.setHNSince(profile_jo.getLong("created"));
 					 target_useritem.setId(profile_jo.getString("id"));
 					 target_useritem.setRegistered(false); 
-					 target_useritem.setHideEmbeddedCounts(true);
 					 target_useritem.setURLCheckingMode("stealth");
 					 if (profile_jo.has("about"))
 						 target_useritem.setHNAbout(profile_jo.getString("about"));
