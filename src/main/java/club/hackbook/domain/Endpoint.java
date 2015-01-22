@@ -2,6 +2,7 @@ package club.hackbook.domain;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -242,10 +243,10 @@ public class Endpoint extends HttpServlet {
 			 */
 			if(method.equals("searchForHNItem") || method.equals("getHNAuthToken") || method.equals("verifyHNUser") || method.equals("getMostFollowedUsers") || method.equals("getItem"))
 			{
-					try 
+				try 
+				{
+					if(method.equals("searchForHNItem"))
 					{
-						if(method.equals("searchForHNItem"))
-						{
 							// default to unknown error message
 							jsonresponse.put("response_status", "error");
 							jsonresponse.put("message", "Unknown error");
@@ -253,6 +254,9 @@ public class Endpoint extends HttpServlet {
 							String url_str = request.getParameter("url");
 							if(url_str != null && !url_str.isEmpty())
 							{
+								boolean gotitem = false;
+								Item hnii = null;
+								 
 								Session session = HibernateUtil.getSessionFactory().openSession();
 								int indentval = (new Random()).nextInt(10);
 								Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.searchForHNItem", "opening");
@@ -260,27 +264,62 @@ public class Endpoint extends HttpServlet {
 								try
 								{
 									 tx = session.beginTransaction();
-									 HashSet<Item> hnitems = getAllHNItemsFromURL(url_str, session);
-									 Item hnii = null;
-									 if(hnitems == null)
-										 hnii = null;
-									 else if(hnitems.size() == 1)
-										 hnii = hnitems.iterator().next();
-									 else if(hnitems.size() > 1)
+									 
+									 // If this is a URL of the form https://news.ycombinator.com/item?id=, it's possible the user is viewing a story page on Hacker News.
+									 // This is a special case where we want the button to show the comment count and upon click, show the thread of the item.
+									 // Why? Because viewing the thread in the button will show deleted comments. The thread on this current page (an HN page) will not. 
+									 // so we need to check the URL, extract the item id, and see if it's a story item. If so, return the thread for it.
+									 // 1. https://news.ycombinator.com/item?id=12345678
+									 // 2. item_id = 12345678
+									 // 3. hnii = sesssion.get(Item.class, 12345678)
+									 // 4. if story, return this hnii.getId();
+									 
+									 System.out.println(url_str);
+									 if(url_str.startsWith("https://news.ycombinator.com/item"))
 									 {
-											System.out.println("There are multiple items matching this URL. Selecting the one with the highest score.");
-											Iterator<Item> it = hnitems.iterator();
-											long max = 0; 
-											Item current = null;
-											while(it.hasNext())
-											{
-												current = it.next();
-												if(current.getScore() > max)
+										 System.out.println("ITEM page!");
+										 URL url_obj = new URL(url_str);
+										 String query = url_obj.getQuery();
+										 String item_id = "";
+										 if(query != null && query.indexOf("id=") > -1)
+										 {
+											 if(query.indexOf("&", query.indexOf("id=")) != -1)
+												 item_id = query.substring(query.indexOf("id=") + 3,query.indexOf("&", query.indexOf("id=")));
+											 else
+												 item_id = query.substring(query.indexOf("id=") + 3);
+											 System.out.println("ITEM_ID=" + item_id);
+											 Item item_obj = (Item)session.get(Item.class, Long.parseLong(item_id));
+											 if(item_obj.getType().equals("story"))
+											 {
+												 gotitem = true;
+												 hnii = item_obj;
+											 }
+										 }
+									 } 
+									 
+									 if(gotitem == false)
+									 {	 
+										 HashSet<Item> hnitems = getAllHNItemsFromURL(url_str, session);
+										 if(hnitems == null)
+											 hnii = null;
+										 else if(hnitems.size() == 1)
+											 hnii = hnitems.iterator().next();
+										 else if(hnitems.size() > 1)
+										 {
+												System.out.println("There are multiple items matching this URL. Selecting the one with the highest score.");
+												Iterator<Item> it = hnitems.iterator();
+												long max = 0; 
+												Item current = null;
+												while(it.hasNext())
 												{
-													hnii = current;
-													max = current.getScore();
+													current = it.next();
+													if(current.getScore() > max)
+													{
+														hnii = current;
+														max = current.getScore();
+													}
 												}
-											}
+										 }
 									 }
 																
 									 if(hnii != null)
@@ -311,9 +350,9 @@ public class Endpoint extends HttpServlet {
 								jsonresponse.put("response_status", "error");
 								jsonresponse.put("message", "Invalid \"url\" parameter.");	
 							}
-						}
-						else if(method.equals("getHNAuthToken")) // user has just chosen to log in with HN. Generate auth token for this screenname, save it, return it.
-						{
+					}
+					else if(method.equals("getHNAuthToken")) // user has just chosen to log in with HN. Generate auth token for this screenname, save it, return it.
+					{
 							// FIXME, user could create arbitrary user names in the database with this. They wouldn't be able to register, and there would be no squatting effect, and people can already create arbitrary usernames on HN
 							// but still, this doesn't feel right. There should probably be a check against the HN API right here.
 							String screenname = request.getParameter("screenname");
@@ -357,9 +396,9 @@ public class Endpoint extends HttpServlet {
 									session.close();
 								}
 							}
-						}
-						else if(method.equals("verifyHNUser")) // Using the generated auth token above, user has changed their "about" page to include the token. Verify it independently.
-						{										// This should probably be triggered by FirebaseListener for optimal performance.
+					}
+					else if(method.equals("verifyHNUser")) // Using the generated auth token above, user has changed their "about" page to include the token. Verify it independently.
+					{										// This should probably be triggered by FirebaseListener for optimal performance.
 							String screenname = request.getParameter("screenname");
 							String topcolor = request.getParameter("topcolor");
 							if(screenname == null || screenname.isEmpty())
@@ -546,9 +585,9 @@ public class Endpoint extends HttpServlet {
 									session.close();
 								}
 							}
-						}
-						else if(method.equals("getMostFollowedUsers"))
-						{
+					}
+					else if(method.equals("getMostFollowedUsers"))
+					{
 							Session session = HibernateUtil.getSessionFactory().openSession();
 							int indentval = (new Random()).nextInt(10);
 							Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.getMostFollowedUsers", "opening");
@@ -577,9 +616,9 @@ public class Endpoint extends HttpServlet {
 								Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.getMostFollowedUsers", "closing");
 								session.close();
 							}		
-						}
-						else if(method.equals("getItem"))
-						{
+					}
+					else if(method.equals("getItem"))
+					{
 							String id = request.getParameter("id");
 							if(id == null || id.isEmpty() || !Global.isWholeNumeric(id))
 							{
@@ -617,15 +656,15 @@ public class Endpoint extends HttpServlet {
 									session.close();
 								}		
 							}
-						}
 					}
-					catch(JSONException jsone)
-					{
-						out.println("{ \"response_status\": \"error\", \"message\": \"JSONException caught in Endpoint GET non-auth methods. method=" + method + "\"}");
-						System.err.println("endpoint: JSONException thrown in Endpoint GET non-auth methods. " + jsone.getMessage());
-						jsone.printStackTrace();
-						return;
-					}	
+				}
+				catch(JSONException jsone)
+				{
+					out.println("{ \"response_status\": \"error\", \"message\": \"JSONException caught in Endpoint GET non-auth methods. method=" + method + "\"}");
+					System.err.println("endpoint: JSONException thrown in Endpoint GET non-auth methods. " + jsone.getMessage());
+					jsone.printStackTrace();
+					return;
+				}	
 			}
 			 /***
 			  *    ___  ___ _____ _____ _   _ ___________  _____  ______ _____ _____     _   _ _____ ___________    ___  _   _ _____ _   _ 
