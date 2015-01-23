@@ -289,7 +289,7 @@ public class Endpoint extends HttpServlet {
 												 item_id = query.substring(query.indexOf("id=") + 3);
 											 System.out.println("ITEM_ID=" + item_id);
 											 Item item_obj = (Item)session.get(Item.class, Long.parseLong(item_id));
-											 if(item_obj.getType().equals("story"))
+											 if(item_obj != null && item_obj.getType().equals("story"))
 											 {
 												 gotitem = true;
 												 hnii = item_obj;
