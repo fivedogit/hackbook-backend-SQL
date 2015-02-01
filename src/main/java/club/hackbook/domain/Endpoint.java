@@ -274,7 +274,6 @@ public class Endpoint extends HttpServlet {
 									 // 3. hnii = sesssion.get(Item.class, 12345678)
 									 // 4. if story, return this hnii.getId();
 									 
-									 System.out.println(url_str);
 									 if(url_str.startsWith("https://news.ycombinator.com/item"))
 									 {
 										 System.out.println("ITEM page!");

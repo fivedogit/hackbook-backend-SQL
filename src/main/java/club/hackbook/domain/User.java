@@ -52,6 +52,9 @@ public class User implements java.lang.Comparable<User> {
 	@ElementCollection
 	@CollectionTable(uniqueConstraints = {@UniqueConstraint(columnNames={"User_id", "following"})})
 	private Set<String> following;
+	@ElementCollection
+	@CollectionTable(uniqueConstraints = {@UniqueConstraint(columnNames={"User_id", "keyphrases"})})
+	private Set<String> keyphrases;
 	
 	private Long since = 0L;
 	private Long seen = 0L;
@@ -136,17 +139,14 @@ public class User implements java.lang.Comparable<User> {
 	public Set<String> getFollowing() { return following; }
 	public void setFollowing(Set<String> following) { this.following = following; }
 		
-	//public Long getKarmaPool() { return karma_pool; }
-	//public void setKarmaPool(Long karma_pool) { this.karma_pool = karma_pool; }
+	public Set<String> getKeyphrases() { return keyphrases; }
+	public void setKeyphrases(Set<String> keyphrases) { this.keyphrases = keyphrases; }
 	
 	public Long getLastKarmaPoolDrain() {return last_karma_pool_drain; }
 	public void setLastKarmaPoolDrain(Long last_karma_pool_drain) { this.last_karma_pool_drain = last_karma_pool_drain; }
 	
 	public Long getKarmaPoolTTLMins() { return karma_pool_ttl_mins; }
 	public void setKarmaPoolTTLMins(Long karma_pool_ttl_mins) { this.karma_pool_ttl_mins = karma_pool_ttl_mins; }
-	
-	//public boolean getHideEmbeddedCounts() {return hide_embedded_counts; }  
-	//public void setHideEmbeddedCounts(boolean hide_embedded_counts) { this.hide_embedded_counts = hide_embedded_counts; }
 	
 	public boolean getHideInlineFollow() {return hide_inline_follow; }  
 	public void setHideInlineFollow(boolean hide_inline_follow) { this.hide_inline_follow = hide_inline_follow; }
@@ -159,9 +159,6 @@ public class User implements java.lang.Comparable<User> {
 	
 	public String getExtVersion() {return ext_version; }  
 	public void setExtVersion(String ext_version) { this.ext_version = ext_version; }
-	
-	//public Integer getUTCOffset() {return UTC_offset; }
-	//public void setUTCOffset(Integer UTC_offset) { this.UTC_offset = UTC_offset; }
 	
 	public boolean isValid(String inc_this_access_token)
 	{
@@ -214,6 +211,8 @@ public class User implements java.lang.Comparable<User> {
 				user_jo.put("notification_ids", getNotificationIds());
 			if(getNewsfeedIds() != null && !getNewsfeedIds().isEmpty())
 				user_jo.put("newsfeed_ids", getNewsfeedIds());
+			if(getKeyphrases() != null && !getKeyphrases().isEmpty())
+				user_jo.put("keyphrases", getKeyphrases());
 			user_jo.put("hide_embedded_counts", true); // this is obsolete and can be deleted after a while (Today is Jan 13, 2015)
 			user_jo.put("hide_inline_follow", this.getHideInlineFollow());	
 			user_jo.put("hide_deep_reply_notifications", this.getHideDeepReplyNotifications());	
