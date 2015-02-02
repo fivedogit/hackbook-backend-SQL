@@ -443,48 +443,63 @@ public class Endpoint extends HttpServlet {
 							int indentval = (new Random()).nextInt(10);
 							Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.searchForHNItem3", "opening");
 							try
-							{
-								if(hn_story_id != null && !hn_story_id.isEmpty()) 	// an hn_story_id was supplied
+							{ 
+								boolean valid_story_id_was_supplied = false;
+								if(hn_story_id != null && !hn_story_id.isEmpty()) 									// an hn_story_id was supplied
 								{
 									 Item item_obj = (Item)session.get(Item.class, Long.parseLong(hn_story_id));
 									 if(item_obj != null && item_obj.getType().equals("story"))
-										 hnii = item_obj;
-								}
-								else 												// a hashed_url was supplied
-								{
-									String hql = "FROM Item as I WHERE '" + hashed_url + "' in elements(I.urlhashes)";
-									Query query = session.createQuery(hql);
-									@SuppressWarnings("unchecked")
-									List<Item> items = query.list();
-									
-									if(items == null)
-										 hnii = null;
-									else if(items.size() == 1)
-										 hnii = items.iterator().next();
-									else if(items.size() > 1)
-									{
-										System.out.println("There are multiple items matching this URL. Selecting the one with the highest score.");
-										Iterator<Item> it = items.iterator();
-										long max = 0; 
-										Item current = null;
-										while(it.hasNext())
-										{
-											current = it.next();
-											if(current.getScore() > max)
-											{
-												hnii = current;
-												max = current.getScore();
-											}
-										}
-									}
+									 {
+										 valid_story_id_was_supplied = true;
+										 jsonresponse.put("response_status", "success");
+										 jsonresponse.remove("message");
+										 jsonresponse.put("objectID", item_obj.getId());
+									 }
 								}
 								
-								jsonresponse.put("response_status", "success");
-								jsonresponse.remove("message");
-								if(hnii != null)
-									 jsonresponse.put("objectID", hnii.getId());
-								else
-									 jsonresponse.put("objectID", "-1");
+								if(!valid_story_id_was_supplied) 													// either hn_story_id was not supplied or it was not valid.
+								{
+									if(hashed_url != null && !hashed_url.isEmpty())									// there is a (seemingly valid) hashed_url parameter
+									{
+										String hql = "FROM Item as I WHERE '" + hashed_url + "' in elements(I.urlhashes)";
+										Query query = session.createQuery(hql);
+										@SuppressWarnings("unchecked")
+										List<Item> items = query.list();
+										
+										if(items == null)
+											 hnii = null;
+										else if(items.size() == 1)
+											 hnii = items.iterator().next();
+										else if(items.size() > 1)
+										{
+											System.out.println("There are multiple items matching this URL. Selecting the one with the highest score.");
+											Iterator<Item> it = items.iterator();
+											long max = 0; 
+											Item current = null;
+											while(it.hasNext())
+											{
+												current = it.next();
+												if(current.getScore() > max)
+												{
+													hnii = current;
+													max = current.getScore();
+												}
+											}
+										}
+										jsonresponse.put("response_status", "success");
+										jsonresponse.remove("message");
+										if(hnii != null)
+											 jsonresponse.put("objectID", hnii.getId());
+										else
+											 jsonresponse.put("objectID", "-1");
+									}
+									else // no valid story id was supplied and the hashed_url was null or empty. This will never happen since hashed_urls are always included. Just respond that this check was a "success" but no item found.
+									{
+										jsonresponse.put("response_status", "success");
+										jsonresponse.remove("message");
+										jsonresponse.put("objectID", "-1");
+									}
+								}
 							}
 							catch (Exception e) {
 								e.printStackTrace();
