@@ -241,7 +241,7 @@ public class Endpoint extends HttpServlet {
 			 *    | |\  \ \_/ / |\  |      | | | | |_| | | | | | | | | |  | || |___  | | | | | \ \_/ / |/ / /\__/ /
 			 *    \_| \_/\___/\_| \_/      \_| |_/\___/  \_/ \_| |_/ \_|  |_/\____/  \_/ \_| |_/\___/|___/  \____/ 
 			 */
-			if(method.equals("searchForHNItem") || method.equals("getHNAuthToken") || method.equals("verifyHNUser") || method.equals("getMostFollowedUsers") || method.equals("getItem"))
+			if(method.equals("searchForHNItem") || method.equals("searchForHNItem2") || method.equals("getHNAuthToken") || method.equals("verifyHNUser") || method.equals("getMostFollowedUsers") || method.equals("getItem"))
 			{
 				try 
 				{
@@ -349,6 +349,82 @@ public class Endpoint extends HttpServlet {
 								jsonresponse.put("response_status", "error");
 								jsonresponse.put("message", "Invalid \"url\" parameter.");	
 							}
+					}
+					else if(method.equals("searchForHNItem2")) // hashed version
+					{
+						// default to unknown error message
+						jsonresponse.put("response_status", "error");
+						jsonresponse.put("message", "Unknown error");
+						
+						String hashed_url = request.getParameter("hashed_url");
+						if(hashed_url != null && !hashed_url.isEmpty())
+						{
+							System.out.println("hashed_url=" + hashed_url);
+							boolean gotitem = false;
+							Item hnii = null;
+							
+							Session session = HibernateUtil.getSessionFactory().openSession();
+							int indentval = (new Random()).nextInt(10);
+							Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.searchForHNItem", "opening");
+							Transaction tx = null; 
+							try
+							{
+								tx = session.beginTransaction();
+								
+								String hql = "FROM Item as I WHERE '" + hashed_url + "' in elements(I.urlhashes)";
+								Query query = session.createQuery(hql);
+								@SuppressWarnings("unchecked")
+								List<Item> items = query.list();
+								
+								 if(items == null)
+									 hnii = null;
+								 else if(items.size() == 1)
+									 hnii = items.iterator().next();
+								 else if(items.size() > 1)
+								 {
+										System.out.println("There are multiple items matching this URL. Selecting the one with the highest score.");
+										Iterator<Item> it = items.iterator();
+										long max = 0; 
+										Item current = null;
+										while(it.hasNext())
+										{
+											current = it.next();
+											if(current.getScore() > max)
+											{
+												hnii = current;
+												max = current.getScore();
+											}
+										}
+								 }
+								
+								 if(hnii != null)
+								 {
+									 jsonresponse.put("response_status", "success");
+									 jsonresponse.remove("message");
+									 jsonresponse.put("objectID", hnii.getId());
+								 }
+								 else
+								 {
+									 jsonresponse.put("response_status", "success");
+									 jsonresponse.remove("message");
+									 jsonresponse.put("objectID", "-1");
+								 }
+								tx.commit();
+							}
+							catch (Exception e) {
+								if (tx!=null) tx.rollback();
+								e.printStackTrace();
+							}
+							finally {
+								Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.searchForHNItem", "closing");
+								session.close();
+							}
+						}
+						else
+						{
+							jsonresponse.put("response_status", "error");
+							jsonresponse.put("message", "Invalid \"url\" parameter.");	
+						}
 					}
 					else if(method.equals("getHNAuthToken")) // user has just chosen to log in with HN. Generate auth token for this screenname, save it, return it.
 					{

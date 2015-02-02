@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.TreeSet;
 import java.util.UUID;
 
+import org.apache.commons.codec.digest.DigestUtils;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.json.JSONArray;
@@ -513,7 +514,29 @@ public class FirebaseChangeProcessor extends java.lang.Thread {
 					  hnii.setTitle(new_jo.getString("title"));
 				  
 				  if(new_jo.has("url"))
-					  hnii.setURL(new_jo.getString("url"));
+				  {	  
+					  String url_str = new_jo.getString("url");
+					  hnii.setURL(url_str);
+
+					  HashSet<String> permutation_hashes = new HashSet<String>();
+					  // first, get the string into http://www. (no trailing slash) format
+					  if (url_str.startsWith("https://"))
+						  url_str = "http://" + url_str.substring(8);
+					  if(!url_str.startsWith("http://www."))
+						  url_str = "http://www." + url_str.substring(7);
+					  if(url_str.endsWith("/"))
+						  url_str = url_str.substring(0,url_str.length() -1);
+						
+					  permutation_hashes.add(DigestUtils.sha256Hex(url_str)); 																	// http://www. ( no slash)
+					  permutation_hashes.add(DigestUtils.sha256Hex(url_str + "/")); 															// http://www. ( +slash)
+					  permutation_hashes.add(DigestUtils.sha256Hex("https" + url_str.substring(4)));											// https://www. ( no slash)
+					  permutation_hashes.add(DigestUtils.sha256Hex("https" + url_str.substring(4) + "/"));										// https://www. ( +slash)
+					  permutation_hashes.add(DigestUtils.sha256Hex("http://" + url_str.substring(11)));											// http:// ( no slash)
+					  permutation_hashes.add(DigestUtils.sha256Hex("http://" + url_str.substring(11) + "/"));									// http:// ( +slash)
+					  permutation_hashes.add(DigestUtils.sha256Hex("https://" + url_str.substring(11)));										// https:// ( no slash)
+					  permutation_hashes.add(DigestUtils.sha256Hex("https://" + url_str.substring(11) + "/"));									// https:// ( +slash)
+					  hnii.setURLHashes(permutation_hashes);
+				  }
 				  
 				  if(new_jo.has("text"))
 					  hnii.setOriginalText(new_jo.getString("text"));

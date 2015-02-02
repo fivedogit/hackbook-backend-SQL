@@ -13,6 +13,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+import club.hackbook.domain.Item;
 import club.hackbook.domain.Notification;
 import club.hackbook.domain.User;
 import club.hackbook.util.HibernateUtil;
@@ -468,11 +469,87 @@ public class MySQLDBTools {
 		}
 	}
 	
+	public HashSet<String> getURLPermutations(String url_str)
+	{
+		HashSet<String> permutations = new HashSet<String>();
+		// first, get the string into http://www. (no trailing slash) format
+		if (url_str.startsWith("https://"))
+			url_str = "http://" + url_str.substring(8);
+		if(!url_str.startsWith("http://www."))
+			url_str = "http://www." + url_str.substring(7);
+		if(url_str.endsWith("/"))
+			url_str = url_str.substring(0,url_str.length() -1);
+		
+		permutations.add(url_str); 																		// http://www. ( no slash)
+		permutations.add(url_str + "/");																// http://www. ( +slash)
+		permutations.add("https" + url_str.substring(4));												// https://www. ( no slash)
+		permutations.add("https" + url_str.substring(4) + "/");											// https://www. ( +slash)
+		permutations.add("http://" + url_str.substring(11));											// http:// ( no slash)
+		permutations.add("http://" + url_str.substring(11) + "/");										// http:// ( +slash)
+		permutations.add("https://" + url_str.substring(11));											// https:// ( no slash)
+		permutations.add("https://" + url_str.substring(11) + "/");										// https:// ( +slash)
+		
+		return permutations;
+	}
+		
+	public void setURLHashesForItemsWithAURL(int x) { 
+		Session session = HibernateUtil.getSessionFactory().openSession();
+		Transaction tx = null;
+		HashSet<String> permutations = null;
+		HashSet<String> permutation_hashes = null;
+		try
+		{
+			 tx = session.beginTransaction();
+			 String hql = "FROM Item I WHERE I.url IS NOT NULL AND I.url != '' AND size(I.urlhashes) = 0";
+			 Query query = session.createQuery(hql);
+			 query.setFirstResult(0);
+			 query.setMaxResults(25);
+			 @SuppressWarnings("unchecked")
+			 List<Item> items = query.list();
+			 
+			 if (items != null && items.size() > 0) {
+				 for (Item item : items) {
+					 permutations = getURLPermutations(item.getURL());
+					 permutation_hashes = new HashSet<String>();
+					 for(String s: permutations)
+					 {
+						 System.out.println(s + " -> " + org.apache.commons.codec.digest.DigestUtils.sha256Hex(s));
+						 permutation_hashes.add(org.apache.commons.codec.digest.DigestUtils.sha256Hex(s));
+					 }
+					 item.setURLHashes(permutation_hashes);
+					 session.save(item);
+				 }
+			 } else {
+			 }
+			 System.out.println("committing x=" + x);
+			 tx.commit();
+		}
+		catch (Exception e) {
+			if (tx!=null) tx.rollback();
+			e.printStackTrace();
+		}
+		finally {
+			session.close();
+		}		
+	}
+	
+	
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
 
 		MySQLDBTools dbt = new MySQLDBTools();
-		dbt.printRegisteredUsers();
+		for(int x = 0; x < 1000;x++)
+		{	
+			dbt.setURLHashesForItemsWithAURL(x);
+		}
+		/*dbt.populateHashesForURL("https://www.facebook.com");
+		dbt.populateHashesForURL("https://www.facebook.com/");
+		dbt.populateHashesForURL("https://facebook.com");
+		dbt.populateHashesForURL("https://facebook.com/");
+		dbt.populateHashesForURL("http://www.facebook.com");
+		dbt.populateHashesForURL("http://www.facebook.com/");
+		dbt.populateHashesForURL("http://facebook.com");
+		dbt.populateHashesForURL("http://facebook.com/");*/
 		System.out.println("Exiting main.");
 	}
 

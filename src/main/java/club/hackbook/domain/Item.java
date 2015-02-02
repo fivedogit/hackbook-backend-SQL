@@ -3,12 +3,14 @@ package club.hackbook.domain;
 import java.util.HashSet;
 import java.util.Set;
 
+import javax.persistence.CollectionTable;
 import javax.persistence.Column;
 import javax.persistence.ElementCollection;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Lob;
 import javax.persistence.Table;
+import javax.persistence.UniqueConstraint;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -35,9 +37,13 @@ public class Item implements java.lang.Comparable<Item> {
 	@Lob
 	@Column(columnDefinition ="LONGTEXT", nullable = true) 	private String original_text = null;
 	
+	@ElementCollection
+	@CollectionTable(uniqueConstraints = {@UniqueConstraint(columnNames={"Item_id", "kids"})})
+	private Set<Long> kids = new HashSet<Long>();
 	
 	@ElementCollection
-	private Set<Long> kids = new HashSet<Long>();
+	@CollectionTable(uniqueConstraints = {@UniqueConstraint(columnNames={"Item_id", "urlhashes"})})
+	private Set<String> urlhashes = new HashSet<String>();
 
 	//////////////////////////////////////////////////////
 	
@@ -72,7 +78,10 @@ public class Item implements java.lang.Comparable<Item> {
 	public void setURL(String url) { this.url = url; }
 	
 	public Set<Long> getKids() { return kids; }
-	void setKids(Set<Long> kids) { this.kids = kids; }
+	public void setKids(Set<Long> kids) { this.kids = kids; }
+	
+	public Set<String> getURLHashes() { return urlhashes; }
+	public void setURLHashes(Set<String> urlhashes) { this.urlhashes = urlhashes; }
 	
 	public String getOriginalText() {return original_text; }
 	public void setOriginalText(String original_text) { this.original_text = original_text; }
