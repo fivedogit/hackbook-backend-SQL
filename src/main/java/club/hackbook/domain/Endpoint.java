@@ -241,7 +241,7 @@ public class Endpoint extends HttpServlet {
 			 *    | |\  \ \_/ / |\  |      | | | | |_| | | | | | | | | |  | || |___  | | | | | \ \_/ / |/ / /\__/ /
 			 *    \_| \_/\___/\_| \_/      \_| |_/\___/  \_/ \_| |_/ \_|  |_/\____/  \_/ \_| |_/\___/|___/  \____/ 
 			 */
-			if(method.equals("searchForHNItem") || method.equals("searchForHNItem2") || method.equals("getHNAuthToken") || method.equals("verifyHNUser") || method.equals("getMostFollowedUsers") || method.equals("getItem"))
+			if(method.equals("searchForHNItem") || method.equals("searchForHNItem2") || method.equals("searchForHNItem3") || method.equals("getHNAuthToken") || method.equals("verifyHNUser") || method.equals("getMostFollowedUsers") || method.equals("getItem"))
 			{
 				try 
 				{
@@ -424,6 +424,80 @@ public class Endpoint extends HttpServlet {
 						{
 							jsonresponse.put("response_status", "error");
 							jsonresponse.put("message", "Invalid \"url\" parameter.");	
+						}
+					}
+					else if(method.equals("searchForHNItem3")) // hashed version
+					{
+						// default to unknown error message
+						jsonresponse.put("response_status", "error");
+						jsonresponse.put("message", "Unknown error");
+						
+						String hn_story_id = request.getParameter("hn_story_id");
+						String hashed_url = request.getParameter("hashed_url");
+						
+						if((hn_story_id != null && !hn_story_id.isEmpty()) || (hashed_url != null && !hashed_url.isEmpty())) // either an hn_story_id or hashed_url was supplied
+						{
+							Item hnii = null;
+							
+							Session session = HibernateUtil.getSessionFactory().openSession();
+							int indentval = (new Random()).nextInt(10);
+							Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.searchForHNItem3", "opening");
+							try
+							{
+								if(hn_story_id != null && !hn_story_id.isEmpty()) 	// an hn_story_id was supplied
+								{
+									 Item item_obj = (Item)session.get(Item.class, Long.parseLong(hn_story_id));
+									 if(item_obj != null && item_obj.getType().equals("story"))
+										 hnii = item_obj;
+								}
+								else 												// a hashed_url was supplied
+								{
+									String hql = "FROM Item as I WHERE '" + hashed_url + "' in elements(I.urlhashes)";
+									Query query = session.createQuery(hql);
+									@SuppressWarnings("unchecked")
+									List<Item> items = query.list();
+									
+									if(items == null)
+										 hnii = null;
+									else if(items.size() == 1)
+										 hnii = items.iterator().next();
+									else if(items.size() > 1)
+									{
+										System.out.println("There are multiple items matching this URL. Selecting the one with the highest score.");
+										Iterator<Item> it = items.iterator();
+										long max = 0; 
+										Item current = null;
+										while(it.hasNext())
+										{
+											current = it.next();
+											if(current.getScore() > max)
+											{
+												hnii = current;
+												max = current.getScore();
+											}
+										}
+									}
+								}
+								
+								jsonresponse.put("response_status", "success");
+								jsonresponse.remove("message");
+								if(hnii != null)
+									 jsonresponse.put("objectID", hnii.getId());
+								else
+									 jsonresponse.put("objectID", "-1");
+							}
+							catch (Exception e) {
+								e.printStackTrace();
+							}
+							finally {
+								Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.searchForHNItem3", "closing");
+								session.close();
+							}
+						}
+						else
+						{
+							jsonresponse.put("response_status", "error");
+							jsonresponse.put("message", "Invalid \"hn_story_id\" and \"hashed_url\" parameters.");	
 						}
 					}
 					else if(method.equals("getHNAuthToken")) // user has just chosen to log in with HN. Generate auth token for this screenname, save it, return it.
@@ -640,6 +714,7 @@ public class Endpoint extends HttpServlet {
 											 catch(IOException ioe)
 											 {
 												 System.err.println("IOException attempting to verifyHNUser. Ignore and continue.");
+												 ioe.printStackTrace();
 											 }
 											}
 										 if(x == limit)

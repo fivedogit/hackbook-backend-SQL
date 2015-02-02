@@ -288,7 +288,7 @@ public class MySQLDBTools {
 			 
 			 if (useritems != null && useritems.size() > 0) {
 				 for (User u : useritems) {
-					 System.out.println("since=" + u.getSinceHumanReadable() + " since=" + u.getSince() + " seen=" + u.getSeenHumanReadable() + "  seen=" + u.getSeen() + " notif_mode=" + u.getNotificationMode() + " url_chking=" + u.getURLCheckingMode() + " ext_version=" + u.getExtVersion() + " id=" + u.getId());
+					 System.out.println("since=" + u.getSinceHumanReadable() + " seen=" + u.getSeenHumanReadable() + " notif_mode=" + u.getNotificationMode() + " url_chking=" + u.getURLCheckingMode() + " ext_version=" + u.getExtVersion() + " id=" + u.getId());
 				 }
 			 } else {
 				 return;
@@ -538,18 +538,7 @@ public class MySQLDBTools {
 		// TODO Auto-generated method stub
 
 		MySQLDBTools dbt = new MySQLDBTools();
-		for(int x = 0; x < 1000;x++)
-		{	
-			dbt.setURLHashesForItemsWithAURL(x);
-		}
-		/*dbt.populateHashesForURL("https://www.facebook.com");
-		dbt.populateHashesForURL("https://www.facebook.com/");
-		dbt.populateHashesForURL("https://facebook.com");
-		dbt.populateHashesForURL("https://facebook.com/");
-		dbt.populateHashesForURL("http://www.facebook.com");
-		dbt.populateHashesForURL("http://www.facebook.com/");
-		dbt.populateHashesForURL("http://facebook.com");
-		dbt.populateHashesForURL("http://facebook.com/");*/
+		dbt.printRegisteredUsers();
 		System.out.println("Exiting main.");
 	}
 
