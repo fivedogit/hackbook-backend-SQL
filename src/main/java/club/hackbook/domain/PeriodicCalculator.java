@@ -16,6 +16,10 @@ import org.json.JSONObject;
 
 import club.hackbook.util.HibernateUtil;
 
+// The sole purpose of PeriodicCalculator is to figure out which users have the highest follower counts. 
+// It's expensive in the sense that it has to query the whole user table (not just registered users, mind you) 
+// and calculate the follower count for each one.
+
 public class PeriodicCalculator extends java.lang.Thread {
 
 	public void initialize()

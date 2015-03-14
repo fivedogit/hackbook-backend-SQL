@@ -52,8 +52,8 @@ public class FirebaseChangeProcessor extends java.lang.Thread {
 		System.out.println("=== " + super.getId() +  " Fired a FirebaseChangeProcessor thread at " + sdf.format(entry));
 		
 		// always start this. Let PeriodicCalculator figure out if it's been > wait time
-		PeriodicCalculator pc = new PeriodicCalculator();
-		pc.start();
+		//PeriodicCalculator pc = new PeriodicCalculator();
+		//pc.start();
 		 
 		System.out.println("2Data changed " + snapshot.getChildrenCount());
 		ArrayList<String> str_value_al = null;
