@@ -513,20 +513,21 @@ public class FirebaseChangeProcessor extends java.lang.Thread {
 				  if(new_jo.has("title"))
 					  hnii.setTitle(new_jo.getString("title"));
 				  
-				  if(new_jo.has("url"))
+				  if(new_jo.has("url") && !new_jo.getString("url").isEmpty())
 				  {	  
 					  String url_str = new_jo.getString("url");
 					  hnii.setURL(url_str);
 
 					  HashSet<String> permutation_hashes = new HashSet<String>();
 					  // first, get the string into http://www. (no trailing slash) format
-					  if (url_str.startsWith("https://"))
-						  url_str = "http://" + url_str.substring(8);
+					  //System.out.println("ORIGINAL: " + url_str);
+					  if(url_str.startsWith("https://"))
+						  url_str = url_str.replaceFirst("https://", "http://");
 					  if(!url_str.startsWith("http://www."))
-						  url_str = "http://www." + url_str.substring(7);
+						  url_str = url_str.replaceFirst("http://", "http://www.");
 					  if(url_str.endsWith("/"))
 						  url_str = url_str.substring(0,url_str.length() -1);
-						
+					  //System.out.println("   AFTER: " + url_str);
 					  permutation_hashes.add(DigestUtils.sha256Hex(url_str)); 																	// http://www. ( no slash)
 					  permutation_hashes.add(DigestUtils.sha256Hex(url_str + "/")); 															// http://www. ( +slash)
 					  permutation_hashes.add(DigestUtils.sha256Hex("https" + url_str.substring(4)));											// https://www. ( no slash)
