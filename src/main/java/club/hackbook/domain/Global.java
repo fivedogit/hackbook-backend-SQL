@@ -15,7 +15,7 @@ public class Global {
 
 	public static final Long NEWSFEED_SIZE_LIMIT = 40L;
 	public static final Long NOTIFICATIONS_SIZE_LIMIT = 30L;
-	public static boolean devel = true;
+	public static boolean devel = false;
 	
 	public static boolean isWholeNumeric(String incoming_string) // only works for whole numbers, positive and negative
 	{
