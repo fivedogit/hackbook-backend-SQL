@@ -594,7 +594,7 @@ public class Endpoint extends HttpServlet {
 										 String checked_uuid = "";
 										 int bi = 0;
 										 int ei = 0;
-										 int limit = 7;
+										 int limit = 9;
 										 String hn_karma_str = "0";
 										 String hn_since_str = "0";
 										 JSONObject hn_user_jo = null;
@@ -607,7 +607,7 @@ public class Endpoint extends HttpServlet {
 											 e.printStackTrace();
 										 }
 										 x=2;
-										 while(x < limit) // 2 (11 sec), 3 (16 sec), 4 (21 sec), 5 (26 sec), 6 (31 sec)
+										 while(x < limit) // 2 (11 sec), 3 (16 sec), 4 (21 sec), 5 (26 sec), 6 (31 sec), 7 (36 sec), 8 (41 sec)
 										 {
 											 try
 											 {
@@ -849,6 +849,7 @@ public class Endpoint extends HttpServlet {
 				 try
 				 {
 					 // for all of these methods, check email/this_access_token. Weak check first (to avoid database hits). Then check database.
+					 boolean user_is_valid = false;
 					 String screenname = request.getParameter("screenname"); // the requester's email
 					 String this_access_token = request.getParameter("this_access_token"); // the requester's auth
 					 if(!(screenname == null || screenname.isEmpty()) && !(this_access_token == null || this_access_token.isEmpty())) 
@@ -858,678 +859,18 @@ public class Endpoint extends HttpServlet {
 							if(!(screenname == null || screenname.isEmpty()))
 							{
 								// otherwise, continue to user retrieval
-								Session session = HibernateUtil.getSessionFactory().openSession();
-								int indentval = (new Random()).nextInt(10);
-								Global.printThreadHeader(indentval, session.hashCode(), "Endpoint." + method, "opening");
+								Session session = null;
 								Transaction tx = null; 
+								int indentval = (new Random()).nextInt(10);
 								try
 								{
-									tx = session.beginTransaction();
+									session = HibernateUtil.getSessionFactory().openSession();
+									session.clear();
+									Global.printThreadHeader(indentval, session.hashCode(), "Endpoint." + method, "opening");
+									
 									User useritem = (User)session.get(User.class, screenname);
 									if(useritem != null)
-									{	
-										if(useritem.isValid(this_access_token)) 
-										{	
-											if (method.equals("getUserSelf")) // I think this might be redundant (or maybe the one below is)
-											{
-												boolean something_needs_updating = false;
-												
-												// check ext version as reported by user.
-												String ext_version = request.getParameter("ext_version");
-												if(ext_version != null && !ext_version.isEmpty()) // covering the bases
-												{
-													if(ext_version.length() == 5 && Global.isWholeNumeric(ext_version.substring(0,1)) && ext_version.substring(1,2).equals(".") && Global.isWholeNumeric(ext_version.substring(2,5))) // is of the form "X.YYY"
-													{
-														if(useritem.getExtVersion() == null || !useritem.getExtVersion().equals(ext_version)) // if the existing value is null, or the verions don't match, update
-														{
-															useritem.setExtVersion(ext_version);
-															something_needs_updating = true;
-														}
-													}
-												}
-												JSONObject user_jo = null;
-												long now = System.currentTimeMillis();
-												
-												if(now - useritem.getSeen() > 600000) // if it's been > 10 mins since last "seen" update, update it
-												{
-													something_needs_updating = true;
-													useritem.setSeen(now);
-													SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
-													sdf.setTimeZone(TimeZone.getTimeZone("America/New_York"));
-													useritem.setSeenHumanReadable(sdf.format(timestamp_at_entry));
-												}
-												
-												// If user's karma pool TTL has expired, check to see if their karma has changed.
-												if(useritem.getLastKarmaPoolDrain() < (System.currentTimeMillis() - (useritem.getKarmaPoolTTLMins()*60000))) 
-												{
-													// FIXME this should be spun off asynchronously.
-													try{
-														String result = Jsoup
-																.connect("https://hacker-news.firebaseio.com/v0/user/" + screenname  + ".json")
-																.userAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.104 Safari/537.36")
-																.ignoreContentType(true).execute().body();
-														JSONObject hn_user_jo = new JSONObject(result);
-														if(hn_user_jo.has("karma"))
-														{
-															if(useritem.getHNKarma() != hn_user_jo.getLong("karma"))
-															{
-																long change = hn_user_jo.getLong("karma") - useritem.getHNKarma();
-																System.out.print("*** Endpoint.getUserSelf() found lingering karma in pool outside of karma pooling ttl. Reporting change " + change + " for " + useritem.getId());
-																FirebaseChangeProcessor fcp = new FirebaseChangeProcessor(null);
-																if(change > 0L)
-																{
-																	System.out.println("\tcalling createNotification for positive change.");
-																	fcp.createNotification(useritem, "1", 0L, System.currentTimeMillis(), null, change, session); // feedable event 1, positive karma change
-																}
-																else if(change < 0L)				
-																{
-																	System.out.println("\tcalling createNotification for negative change.");
-																	fcp.createNotification(useritem, "2", 0L, System.currentTimeMillis(), null, change, session); // feedable event 2, negative karma change
-																}
-																useritem.setHNKarma(hn_user_jo.getLong("karma"));
-																useritem.setLastKarmaPoolDrain(System.currentTimeMillis());
-																something_needs_updating = true;
-															}
-														}
-													}
-													catch(IOException ioe){
-														//
-													}
-													catch(JSONException jsone){
-														//
-													}			
-												}
-
-												if(something_needs_updating)
-													session.save(useritem);
-												
-												user_jo = useritem.getJSON();
-												
-												Globalvar gvi = (Globalvar)session.get(Globalvar.class, "latest_ext_version");
-												if(gvi != null)
-													jsonresponse.put("latest_ext_version", gvi.getStringValue());
-												jsonresponse.put("response_status", "success");
-												jsonresponse.put("user_jo", user_jo);	
-											}
-											else if (method.equals("setUserPreference")) // email, this_access_token, target_email (of user to get) // also an admin method
-											{
-													 String which = request.getParameter("which");
-													 String value = request.getParameter("value");
-													 if(which == null || value == null)
-													 {
-														 jsonresponse.put("message", "Invalid parameters.");
-														 jsonresponse.put("response_status", "error");
-													 }
-													 else
-													 {	 
-														 System.out.println("Endpoint setUserPreference() begin: which=" + which + " and value=" + value);
-														 jsonresponse.put("response_status", "success"); // default to success, then overwrite with error if necessary
-														 if(which.equals("url_checking_mode")) 
-														 {
-															 if(value.equals("notifications_only"))
-																 useritem.setURLCheckingMode("notifications_only");
-															 else // this is an error, default to 450
-																 useritem.setURLCheckingMode("stealth");
-															 session.save(useritem);
-															 jsonresponse.put("response_status", "success"); 
-														 }
-														 else if(which.equals("notification_mode")) 
-														 {
-															 if(value.equals("notifications_only"))
-																 useritem.setNotificationMode("notifications_only");
-															 else if(value.equals("newsfeed_and_notifications"))
-																 useritem.setNotificationMode("newsfeed_and_notifications");
-															 session.save(useritem);
-															 jsonresponse.put("response_status", "success"); 
-														 }
-														 else if(which.equals("karma_pool_ttl")) 
-														 {
-															 if(!Global.isWholeNumeric(value))
-															 {
-																 jsonresponse.put("message", "Must be an int between 5 and 1440.");
-																 jsonresponse.put("response_status", "error");
-															 }
-															 else
-															 {
-																 long val = Long.parseLong(value);
-																 if(val > 1440L || val < 5L)
-																 {
-																	 jsonresponse.put("message", "Must be an int between 5 and 1440.");
-																	 jsonresponse.put("response_status", "error");
-																 }
-																 else
-																 {
-																	 useritem.setKarmaPoolTTLMins(val);
-																	 session.save(useritem);
-																	 jsonresponse.put("response_status", "success"); 
-																 }
-															 }
-														 }
-														 else if(which.equals("hide_inline_follow") || which.equals("hide_deep_reply_notifications") || which.equals("hide_promo_links")) 
-														 {
-															 if(value.equals("show") || value.equals("hide"))
-															 {
-																 if(which.equals("hide_inline_follow"))
-																 {
-																	 if(value.equals("show"))
-																		 useritem.setHideInlineFollow(false);
-																	 else
-																		 useritem.setHideInlineFollow(true);
-																 }
-																 else if(which.equals("hide_deep_reply_notifications"))
-																 {
-																	 if(value.equals("show"))
-																		 useritem.setHideDeepReplyNotifications(false);
-																	 else
-																		 useritem.setHideDeepReplyNotifications(true);
-																 }
-																 else if(which.equals("hide_promo_links"))
-																 {
-																	 if(value.equals("show"))
-																		 useritem.setHidePromoLinks(false);
-																	 else
-																		 useritem.setHidePromoLinks(true);
-																 }
-																 session.save(useritem);
-															 }
-															 else
-															 {
-																 jsonresponse.put("message", "Must be \"show\" or \"hide\".");
-																 jsonresponse.put("response_status", "error");
-															 }
-														 }
-														 else
-														 {
-															 jsonresponse.put("message", "Invalid which value.");
-															 jsonresponse.put("response_status", "error");
-														 }
-													 }
-											}
-											else if (method.equals("resetNotificationCount"))
-											{
-													 //System.out.println("Endpoint resetNotificationCount() begin);
-													 useritem.setNotificationCount(0L);
-													 session.save(useritem);
-													 jsonresponse.put("message", "Notification count successfully reset."); 
-													 jsonresponse.put("response_status", "success");
-													//System.out.println("Endpoint resetNotificationCount() end);
-											}
-											else if (method.equals("resetNewsfeedCount"))
-											{
-													 //System.out.println("Endpoint resetNewsfeedCount() begin);
-													 useritem.setNewsfeedCount(0L);
-													 session.save(useritem);
-													 jsonresponse.put("message", "Newsfeed count successfully reset."); 
-													 jsonresponse.put("response_status", "success");
-													//System.out.println("Endpoint resetNewsfeedCount() end);
-											}
-											else if (method.equals("deleteNotification"))
-											{
-													 String notification_id = request.getParameter("notification_id");
-													 if(notification_id == null || notification_id.isEmpty())
-													 {
-														 jsonresponse.put("message", "notification_id value was null or empty");
-														 jsonresponse.put("response_status", "error");
-													 }
-													 else
-													 {
-														 Notification ni = (Notification)session.get(Notification.class, notification_id);
-														 if(ni != null)
-														 {
-															 if(ni.getUserId().equals(useritem.getId()))
-															 {
-																 session.delete(ni);
-																 
-																 // also remove from user's notification set
-																 Set<String> notificationset = useritem.getNotificationIds();
-																 if(notificationset != null)
-																 {
-																	 notificationset.remove(request.getParameter("id"));
-																	 if(notificationset.isEmpty())
-																		 notificationset = null;
-																	 useritem.setNotificationIds(notificationset);
-																	 session.save(useritem);
-																 }
-																 // else the notification set was already null, so it wasn't there to begin with
-																 jsonresponse.put("response_status", "success");
-															 }
-															 else
-															 {
-																 jsonresponse.put("message", "You don't own that notification item.");
-																 jsonresponse.put("response_status", "error");
-															 }
-														 }
-														 else
-														 {
-															 jsonresponse.put("response_status", "success"); // if not found, it was never there to begin with, so return success as it is definitely gone
-														 }
-													 }
-											}
-											else if (method.equals("removeItemFromNotificationIds"))
-											{
-													 System.out.println("Endpoint.removeItemFromNotificationIds() begin");
-													 String notification_id = request.getParameter("notification_id");
-													 if(notification_id == null || notification_id.isEmpty())
-													 {
-														 jsonresponse.put("message", "notification_id value was null or empty");
-														 jsonresponse.put("response_status", "error");
-													 }
-													 else
-													 {
-														 Set<String> notificationset = useritem.getNotificationIds();
-														 if(notificationset != null)
-														 {
-															 System.out.println("notificationset was not null, size=" + notificationset.size() + " removing "+ notification_id);
-															 Iterator<String> it = notificationset.iterator();
-															 while(it.hasNext())
-															 {
-																 System.out.println(it.next());
-															 }
-															 boolean successful = notificationset.remove(notification_id);
-															 System.out.println("successful=" + successful);
-															 if(notificationset.isEmpty())
-																 notificationset = null;
-															 useritem.setNotificationIds(notificationset);
-															 session.save(useritem);
-														 }
-														 // else notification set was already null, no need to return an error.
-														 jsonresponse.put("response_status", "success");
-													 }
-													 System.out.println("Endpoint.removeItemFromNotificationIds() end");
-											}
-											else if (method.equals("getNotificationItem"))
-											{
-													 //System.out.println("Endpoint.getNotificationItem() begin");
-													 String notification_id = request.getParameter("notification_id");
-													 if(notification_id == null)
-													 {
-														 jsonresponse.put("message", "This method requires a notification_id value != null");
-														 jsonresponse.put("response_status", "error"); 
-													 }
-													 else if(notification_id.isEmpty())
-													 {
-														 jsonresponse.put("message", "This method requires a non-empty notification_id value");
-														 jsonresponse.put("response_status", "error"); 
-													 }
-													 else
-													 {
-														 Notification ai = (Notification)session.get(Notification.class, notification_id);
-														 if(ai == null)
-														 {
-															 // No notification with the specified ID exists. 
-															 // If that id is in the user's notification or newsfeed sets, remove it and update user.
-															 boolean saveuser = false;
-															 Set<String> notificationset = useritem.getNotificationIds();
-															 if(notificationset != null && notificationset.contains(notification_id))
-															 {
-																 notificationset.remove(notification_id);
-																 if(notificationset.isEmpty())
-																	 notificationset = null;
-																 useritem.setNotificationIds(notificationset);
-																 saveuser = true;
-															 }
-															 Set<String> newsfeedset = useritem.getNewsfeedIds();
-															 if(newsfeedset != null && newsfeedset.contains(notification_id))
-															 {
-																 newsfeedset.remove(notification_id);
-																 if(newsfeedset.isEmpty())
-																	 newsfeedset = null;
-																 useritem.setNewsfeedIds(newsfeedset);
-																 saveuser = true;
-															 }
-															 if(saveuser)
-																 session.save(useritem);
-															 jsonresponse.put("message", "No notification with that ID exists.");
-															 jsonresponse.put("response_status", "error"); 
-														 }
-														 else 
-														 {
-															 if(!ai.getUserId().equals(screenname))
-															 {
-																 jsonresponse.put("message", "Permission denied. You're not the owner of this notification.");
-																 jsonresponse.put("response_status", "error"); 
-															 }
-															 else
-															 {
-																 jsonresponse.put("response_status", "success");
-																 jsonresponse.put("notification_jo", ai.getJSON());
-															 }
-														 }
-													 }
-													 //System.out.println("Endpoint.getNotificationItem() end");
-											}
-											else if (method.equals("followUser"))
-											{
-												System.out.println("Endpoint.followUser() begin");
-													 String target_screenname = request.getParameter("target_screenname");
-													 if(target_screenname == null)
-													 {
-														 System.out.println("Endpoint.followUser() 0");
-														 jsonresponse.put("message", "This method requires a target_screenname value != null");
-														 jsonresponse.put("response_status", "error"); 
-													 }
-													 else if(target_screenname.isEmpty())
-													 {
-														 System.out.println("Endpoint.followUser() 1");
-														 jsonresponse.put("message", "This method requires a non-empty target_screenname value");
-														 jsonresponse.put("response_status", "error"); 
-													 }
-													 else if(target_screenname.equals(screenname))
-													 {
-														 System.out.println("Endpoint.followUser() 2");
-														 jsonresponse.put("message", "You can't follow yourself.");
-														 jsonresponse.put("response_status", "error"); 
-													 }
-													 else if(useritem.getFollowing() != null && useritem.getFollowing().contains(target_screenname))
-													 {
-														 System.out.println("Endpoint.followUser() 3");
-														 jsonresponse.put("message", "You are already following that user.");
-														 jsonresponse.put("response_status", "error"); 
-													 }
-													 else
-													 {
-														 System.out.println("Endpoint.followUser() 4");
-														 User target_useritem = getUserInDBCreatingIfNotAndFoundWithinHNAPI(target_screenname, session);
-														 if(target_useritem != null)
-														 { 
-															 System.out.println("Endpoint.followUser() 5");
-															 System.out.println(useritem.getId() + " has chosen to follow " + target_useritem.getId());
-															 // create "someone followed you" notification item and add to the user being followed, but only if he/she 
-															 // (a) is registered and (b) has not already notified of this follow
-															 if(target_useritem.getRegistered()) // (a) registered
-															 {	
-																 System.out.println(target_useritem.getId() + " was found in the DB and is registered with Hackbook.");
-																 boolean already_notified = false;
-																 Set<String> notification_item_ts = (Set<String>)target_useritem.getNotificationIds();
-																 if(notification_item_ts == null || notification_item_ts.isEmpty())
-																	 already_notified = false;
-																 else
-																 {	 
-																	 Iterator<String> it = notification_item_ts.iterator();
-																	 Notification ni = null;
-																	 String current_notification_id = null;
-																	 while(it.hasNext())
-																	 {
-																		 current_notification_id = it.next();
-																		 System.out.println("current_notifcation_id=" + current_notification_id);
-																		 ni = (Notification)session.get(Notification.class, current_notification_id);
-																		 if(ni.getType().equals("0") && 
-																				 ni.getTriggerer().equals(
-																						 useritem.getId()
-																						 ))
-																		 {
-																			 System.out.println("***" + target_useritem.getId() + " has already been notified that " + useritem.getId() + " is following them!");
-																			 already_notified = true;
-																			 break;
-																		 }
-																	 }
-																 }
-																 
-																 if(!already_notified) // (b) not already notified
-																 { 
-																	 long now = System.currentTimeMillis();
-																	 String now_str = Global.fromDecimalToBase62(7,now);
-																	 Random generator = new Random(); 
-																	 int r = generator.nextInt(238327); // this will produce numbers that can be represented by 3 base62 digits
-																	 String randompart_str = Global.fromDecimalToBase62(3,r);
-																	 String notification_id = now_str + randompart_str + "0"; 
-																		
-																	 Notification ai = new Notification(); 
-																	 ai.setId(notification_id);
-																	 ai.setActionMSFE(now);
-																	 ai.setMSFE(now);
-																	 ai.setUserId(target_useritem.getId());
-																	 ai.setType("0");
-																	 //ai.setHNTargetId(null);
-																	 ai.setTriggerer(useritem.getId());
-																	 //ai.setHNRootStoryId();
-																	 //ai.setHNRootCommentId();
-																	 session.save(ai);
-																	 System.out.println("notification item " + notification_id + " has been saved in the db.");
-																	 
-																	 TreeSet<String> notificationset = new TreeSet<String>();
-																	 if(target_useritem.getNotificationIds() != null)
-																		 notificationset.addAll(target_useritem.getNotificationIds());
-																	 notificationset.add(notification_id);
-																	 while(notificationset.size() > Global.NOTIFICATIONS_SIZE_LIMIT)
-																    		notificationset.remove(notificationset.first());
-																	 target_useritem.setNotificationIds(notificationset);
-																	 target_useritem.setNotificationCount(target_useritem.getNotificationCount()+1);
-																 }
-															 }
-															 else
-															 {
-																 System.out.println(target_useritem.getId() + " was found in the DB but is NOT registered with Hackbook.");
-															 }
-															 
-															 Set<String> followersset = target_useritem.getFollowers();
-															 if(followersset == null)
-																 followersset = new HashSet<String>();
-															 followersset.add(useritem.getId()); // add useritem to the target_useritem's followers list
-															 target_useritem.setFollowers(followersset);
-															 session.save(target_useritem);
-															 System.out.println(target_useritem.getId() + " has been saved with new followers list and notification id (if registered)");
-															 
-															 Set<String> followingset = useritem.getFollowing();
-															 if(followingset == null)
-																 followingset = new HashSet<String>();
-															 followingset.add(target_useritem.getId()); // add target_useritem to the useritem's following list
-															 useritem.setFollowing(followingset);
-															 session.save(useritem);
-															 System.out.println(useritem.getId() + " has been saved with a new following list");
-															 
-															 NewFollowNewsfeedAdjuster nfnfa = new NewFollowNewsfeedAdjuster(useritem.getId(), target_useritem.getId());
-															 System.out.println("Doing it ASYNCHRONOUSLY");
-															 nfnfa.start(); // ASYNCHRONOUSLY put new feed items (triggered by target_useritem) into useritem's feed
-
-															 jsonresponse.put("response_status", "success");
-														 }
-														 else
-														 {
-															 System.out.println("Endpoint.followUser() 6");
-															 jsonresponse.put("message", "Invalid user.");
-															 jsonresponse.put("response_status", "error");  
-														 }
-													 }
-												System.out.println("Endpoint.followUser() end");
-											}
-											else if (method.equals("unfollowUser"))
-											{
-													 System.out.println("Endpoint.unfollowUser() begin");
-													 String target_screenname = request.getParameter("target_screenname");
-													 User target_useritem = (User)session.get(User.class, target_screenname);
-													 if(target_useritem == null)
-													 {
-														 jsonresponse.put("message", "Can't unfollow user bc they don't exist in the DB.");
-														 jsonresponse.put("response_status", "error");
-													 }
-													 else if(target_screenname.isEmpty())
-													 {
-														 jsonresponse.put("message", "This method requires a non-empty target_screenname value");
-														 jsonresponse.put("response_status", "error"); 
-													 }
-													 else if(target_screenname.equals(screenname))
-													 {
-														 jsonresponse.put("message", "You can't unfollow yourself.");
-														 jsonresponse.put("response_status", "error"); 
-													 }
-													 else
-													 {
-														 System.out.println("inc values ok");
-														 Set<String> followingset = useritem.getFollowing();
-														 if(followingset == null || !followingset.contains(target_screenname))
-														 {
-															 jsonresponse.put("message", "You aren't following that user.");
-															 jsonresponse.put("response_status", "error"); 
-														 }
-														 else
-														 {
-															
-															 System.out.println("You are following that user, so it can be removed right now.");
-															 followingset.remove(target_useritem.getId());
-															 if(followingset.isEmpty())
-																 followingset = null;
-															 useritem.setFollowing(followingset);
-															 
-															 // Go through the user's newsfeed (the user doing the unfollowing), and remove any items by the user they just unfollowed
-															 Set<String> newsfeedset = useritem.getNewsfeedIds();
-															 TreeSet<String> new_newsfeedset = new TreeSet<String>();
-															 if(newsfeedset != null && !newsfeedset.isEmpty())
-															 {
-																 Iterator<String> newsfeed_it = newsfeedset.iterator();
-																 Notification ni = null;
-																 while(newsfeed_it.hasNext())
-																 {	 
-																	 ni = (Notification)session.get(Notification.class, newsfeed_it.next());
-																	 if(!ni.getTriggerer().equals(target_screenname))
-																		 new_newsfeedset.add(ni.getId()); 
-																 }
-																 if(new_newsfeedset.isEmpty())
-																	 new_newsfeedset = null;
-																 useritem.setNewsfeedIds(new_newsfeedset);
-															 }
-															 session.save(useritem);
-															 // 1. we don't have to check NotificationIds because this is an unfollow which only affects newsfeed items.
-															 // 2. We don't need to check newsfeed size limit because we're unfollowing. At worst, the size stays the same.
-															
-															 // remove useritem from target_useritem's followers set
-															 Set<String> followersset = target_useritem.getFollowers();
-															 if(followersset != null)
-															 {
-																 followersset.remove(useritem.getId());
-																 if(followersset.isEmpty())
-																	 followersset = null;
-																 target_useritem.setFollowers(followersset);
-																 session.save(target_useritem);
-															 }
-															 // don't need to remove anything from notifications because notifications are based on 
-															 // stuff that is done to the user, not who the user is following
-															 jsonresponse.put("response_status", "success");
-														 }
-													 }
-													 System.out.println("Endpoint.unfollowUser() end");
-											}
-											else if (method.equals("submitChatMessage"))
-											{
-												 String message = request.getParameter("message");
-												 if(message != null && message.isEmpty())
-												 {
-													 jsonresponse.put("message", "Message was empty.");
-													 jsonresponse.put("response_status", "error"); 
-												 }
-												 else
-												 {
-													 Chat ci = new Chat();
-													 long now0 = System.currentTimeMillis();
-													 String now_str = Global.fromDecimalToBase62(7,now0);
-													 Random generator = new Random(); 
-													 int r = generator.nextInt(238327); // this will produce numbers that can be represented by 3 base62 digits
-													 String randompart_str = Global.fromDecimalToBase62(3,r);
-													 String message_id = now_str + randompart_str;
-													 ci.setId(message_id);
-													 ci.setUserId(useritem.getId());
-													 ci.setHostname("news.ycombinator.com");
-													 ci.setMSFE(now0);
-													 ci.setText(message);
-													 session.save(ci);
-													 jsonresponse.put("response_status", "success");
-													 
-													 // if there is valid chat, attach it to the response
-													 HashSet<Chat> chat = getChat(session); // 3 days in minutes
-													 if(!(chat == null || chat.isEmpty()))
-													 { 
-														 Iterator<Chat> chat_it = chat.iterator();
-														 Chat currentitem = null;
-														 JSONArray chat_ja = new JSONArray();
-														 while(chat_it.hasNext())
-														 {
-															 currentitem = chat_it.next();
-															 chat_ja.put(currentitem.getJSON());
-														 }
-														 jsonresponse.put("chat_ja", chat_ja);
-													 }
-													 
-													 Pattern pattern = Pattern.compile(".*@[A-Za-z_\\-].*");
-													 Matcher matcher = pattern.matcher(message);
-													 
-													 if(matcher.matches())
-													 {
-														 System.out.println("Chat message from " + useritem.getId() + " contains an @ followed by a [A-Za-z\\-_] char.");
-														 TreeSet<User> mentioned_registered_users = getMentionedUsers(message, useritem, session);
-														 if(mentioned_registered_users != null && !mentioned_registered_users.isEmpty())
-														 {	 
-															 Iterator<User> mentionedusers_it = mentioned_registered_users.iterator();
-															 User mentioneduser = null;
-															 long now1 = 0L;
-															 while(mentionedusers_it.hasNext())
-															 {
-																 mentioneduser = mentionedusers_it.next();
-																 
-																 now1 = System.currentTimeMillis();
-																 now_str = Global.fromDecimalToBase62(7,now1);
-																 r = generator.nextInt(238327); // this will produce numbers that can be represented by 3 base62 digits
-																 randompart_str = Global.fromDecimalToBase62(3,r);
-																 String notification_id = now_str + randompart_str + "C"; 
-																	
-																 Notification ai = new Notification(); 
-																 ai.setId(notification_id);
-																 ai.setActionMSFE(now0); // the chat item got added slightly before this notification item.
-																 ai.setMSFE(now1);
-																 ai.setUserId(mentioneduser.getId());
-																 ai.setType("C");
-																 //ai.setHNTargetId(null);
-																 ai.setTriggerer(useritem.getId());
-																 //ai.setHNRootStoryId();
-																 //ai.setHNRootCommentId();
-																 session.save(ai);
-																 
-																 TreeSet<String> notificationset = new TreeSet<String>();
-																 if(mentioneduser.getNotificationIds() != null)
-																	 notificationset.addAll(mentioneduser.getNotificationIds());
-																 notificationset.add(notification_id);
-																 while(notificationset.size() > Global.NOTIFICATIONS_SIZE_LIMIT)
-															    		notificationset.remove(notificationset.first());
-																 mentioneduser.setNotificationIds(notificationset);
-																 mentioneduser.setNotificationCount(mentioneduser.getNotificationCount()+1);
-																 session.save(mentioneduser);
-															 }
-														 }
-													 }
-												 }
-											}
-											else if (method.equals("getChat"))
-											{
-												HashSet<Chat> chat = getChat(session); // 3 days in minutes
-												if(chat == null || chat.isEmpty())
-												{
-													jsonresponse.put("response_status", "success");
-													// successful... just empty. don't put a chat_ja object
-												}
-												else
-												{ 
-													Iterator<Chat> chat_it = chat.iterator();
-													Chat currentitem = null;
-													JSONArray chat_ja = new JSONArray();
-													while(chat_it.hasNext())
-													{
-														currentitem = chat_it.next();
-														chat_ja.put(currentitem.getJSON());
-													}
-													jsonresponse.put("response_status", "success");
-													if(chat_ja.length() > 0)
-														jsonresponse.put("chat_ja", chat_ja);
-												}
-											}
-										}
-										else // user had an screenname and this_access_token, but they were not valid. Let the frontend know to get rid of them
-										{
-											System.out.println("Endpoint: screenname (" + screenname + ") + access token present, but not valid. method=" + method);
-											jsonresponse.put("response_status", "error");
-											jsonresponse.put("message", "screenname + access token present, but not valid. Please try again.");
-											jsonresponse.put("error_code", "0000");
-										}
-											
-									}
+										user_is_valid = useritem.isValid(this_access_token);
 									else // couldn't get useritem from provided screenname
 									{
 										System.out.println("Endpoint: No user was found for that screenname (" + screenname + "). method=" + method);
@@ -1537,7 +878,695 @@ public class Endpoint extends HttpServlet {
 										jsonresponse.put("message", "No user was found for that screenname. Please try again.");
 										jsonresponse.put("error_code", "0000");
 									}
-									tx.commit();	
+									
+									if(user_is_valid)
+									{
+										if (method.equals("getUserSelf")) // I think this might be redundant (or maybe the one below is)
+										{
+											tx = session.beginTransaction();
+											boolean something_needs_updating = false;
+											
+											// check ext version as reported by user.
+											String ext_version = request.getParameter("ext_version");
+											if(ext_version != null && !ext_version.isEmpty()) // covering the bases
+											{
+												if(ext_version.length() == 5 && Global.isWholeNumeric(ext_version.substring(0,1)) && ext_version.substring(1,2).equals(".") && Global.isWholeNumeric(ext_version.substring(2,5))) // is of the form "X.YYY"
+												{
+													if(useritem.getExtVersion() == null || !useritem.getExtVersion().equals(ext_version)) // if the existing value is null, or the verions don't match, update
+													{
+														useritem.setExtVersion(ext_version);
+														something_needs_updating = true;
+													}
+												}
+											}
+											JSONObject user_jo = null;
+											long now = System.currentTimeMillis();
+											
+											if(now - useritem.getSeen() > 600000) // if it's been > 10 mins since last "seen" update, update it
+											{
+												something_needs_updating = true;
+												useritem.setSeen(now);
+												SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
+												sdf.setTimeZone(TimeZone.getTimeZone("America/New_York"));
+												useritem.setSeenHumanReadable(sdf.format(timestamp_at_entry));
+											}
+											
+											// If user's karma pool TTL has expired, check to see if their karma has changed.
+											if(useritem.getLastKarmaPoolDrain() < (System.currentTimeMillis() - (useritem.getKarmaPoolTTLMins()*60000))) 
+											{
+												// FIXME this should be spun off asynchronously.
+												try{
+													String result = Jsoup
+															.connect("https://hacker-news.firebaseio.com/v0/user/" + screenname  + ".json")
+															.userAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.104 Safari/537.36")
+															.ignoreContentType(true).execute().body();
+													JSONObject hn_user_jo = new JSONObject(result);
+													if(hn_user_jo.has("karma"))
+													{
+														if(useritem.getHNKarma() != hn_user_jo.getLong("karma"))
+														{
+															long change = hn_user_jo.getLong("karma") - useritem.getHNKarma();
+															System.out.print("*** Endpoint.getUserSelf() found lingering karma in pool outside of karma pooling ttl. Reporting change " + change + " for " + useritem.getId());
+															FirebaseChangeProcessor fcp = new FirebaseChangeProcessor(null);
+															if(change > 0L)
+															{
+																System.out.println("\tcalling createNotification for positive change.");
+																fcp.createNotification(useritem, "1", 0L, System.currentTimeMillis(), null, change, session); // feedable event 1, positive karma change
+															}
+															else if(change < 0L)				
+															{
+																System.out.println("\tcalling createNotification for negative change.");
+																fcp.createNotification(useritem, "2", 0L, System.currentTimeMillis(), null, change, session); // feedable event 2, negative karma change
+															}
+															useritem.setHNKarma(hn_user_jo.getLong("karma"));
+															useritem.setLastKarmaPoolDrain(System.currentTimeMillis());
+															something_needs_updating = true;
+														}
+													}
+												}
+												catch(IOException ioe){
+													//
+												}
+												catch(JSONException jsone){
+													//
+												}			
+											}
+
+											if(something_needs_updating)
+												session.save(useritem);
+											
+											user_jo = useritem.getJSON();
+											
+											Globalvar gvi = (Globalvar)session.get(Globalvar.class, "latest_ext_version");
+											if(gvi != null)
+												jsonresponse.put("latest_ext_version", gvi.getStringValue());
+											jsonresponse.put("response_status", "success");
+											jsonresponse.put("user_jo", user_jo);	
+											tx.commit();	
+										}
+										else if (method.equals("setUserPreference")) // email, this_access_token, target_email (of user to get) // also an admin method
+										{
+											tx = session.beginTransaction();
+											 String which = request.getParameter("which");
+											 String value = request.getParameter("value");
+											 if(which == null || value == null)
+											 {
+												 jsonresponse.put("message", "Invalid parameters.");
+												 jsonresponse.put("response_status", "error");
+											 }
+											 else
+											 {	 
+												 System.out.println("Endpoint setUserPreference() begin: which=" + which + " and value=" + value);
+												 jsonresponse.put("response_status", "success"); // default to success, then overwrite with error if necessary
+												 if(which.equals("url_checking_mode")) 
+												 {
+													 if(value.equals("notifications_only"))
+														 useritem.setURLCheckingMode("notifications_only");
+													 else // this is an error, default to 450
+														 useritem.setURLCheckingMode("stealth");
+													 session.save(useritem);
+													 jsonresponse.put("response_status", "success"); 
+												 }
+												 else if(which.equals("notification_mode")) 
+												 {
+													 if(value.equals("notifications_only"))
+														 useritem.setNotificationMode("notifications_only");
+													 else if(value.equals("newsfeed_and_notifications"))
+														 useritem.setNotificationMode("newsfeed_and_notifications");
+													 session.save(useritem);
+													 jsonresponse.put("response_status", "success"); 
+												 }
+												 else if(which.equals("karma_pool_ttl")) 
+												 {
+													 if(!Global.isWholeNumeric(value))
+													 {
+														 jsonresponse.put("message", "Must be an int between 5 and 1440.");
+														 jsonresponse.put("response_status", "error");
+													 }
+													 else
+													 {
+														 long val = Long.parseLong(value);
+														 if(val > 1440L || val < 5L)
+														 {
+															 jsonresponse.put("message", "Must be an int between 5 and 1440.");
+															 jsonresponse.put("response_status", "error");
+														 }
+														 else
+														 {
+															 useritem.setKarmaPoolTTLMins(val);
+															 session.save(useritem);
+															 jsonresponse.put("response_status", "success"); 
+														 }
+													 }
+												 }
+												 else if(which.equals("hide_inline_follow") || which.equals("hide_deep_reply_notifications") || which.equals("hide_promo_links")) 
+												 {
+													 if(value.equals("show") || value.equals("hide"))
+													 {
+														 if(which.equals("hide_inline_follow"))
+														 {
+															 if(value.equals("show"))
+																 useritem.setHideInlineFollow(false);
+															 else
+																 useritem.setHideInlineFollow(true);
+														 }
+														 else if(which.equals("hide_deep_reply_notifications"))
+														 {
+															 if(value.equals("show"))
+																 useritem.setHideDeepReplyNotifications(false);
+															 else
+																 useritem.setHideDeepReplyNotifications(true);
+														 }
+														 else if(which.equals("hide_promo_links"))
+														 {
+															 if(value.equals("show"))
+																 useritem.setHidePromoLinks(false);
+															 else
+																 useritem.setHidePromoLinks(true);
+														 }
+														 session.save(useritem);
+													 }
+													 else
+													 {
+														 jsonresponse.put("message", "Must be \"show\" or \"hide\".");
+														 jsonresponse.put("response_status", "error");
+													 }
+												 }
+												 else
+												 {
+													 jsonresponse.put("message", "Invalid which value.");
+													 jsonresponse.put("response_status", "error");
+												 }
+											 }
+											 tx.commit();	
+										}
+										else if (method.equals("resetNotificationCount"))
+										{
+											tx = session.beginTransaction();
+											 //System.out.println("Endpoint resetNotificationCount() begin);
+											 useritem.setNotificationCount(0L);
+											 session.save(useritem);
+											 jsonresponse.put("message", "Notification count successfully reset."); 
+											 jsonresponse.put("response_status", "success");
+											//System.out.println("Endpoint resetNotificationCount() end);
+											 tx.commit();	
+										}
+										else if (method.equals("resetNewsfeedCount"))
+										{
+											tx = session.beginTransaction();
+											 //System.out.println("Endpoint resetNewsfeedCount() begin);
+											 useritem.setNewsfeedCount(0L);
+											 session.save(useritem);
+											 jsonresponse.put("message", "Newsfeed count successfully reset."); 
+											 jsonresponse.put("response_status", "success");
+											//System.out.println("Endpoint resetNewsfeedCount() end);
+											 tx.commit();	
+										}
+										else if (method.equals("deleteNotification"))
+										{
+											tx = session.beginTransaction();
+											 String notification_id = request.getParameter("notification_id");
+											 if(notification_id == null || notification_id.isEmpty())
+											 {
+												 jsonresponse.put("message", "notification_id value was null or empty");
+												 jsonresponse.put("response_status", "error");
+											 }
+											 else
+											 {
+												 Notification ni = (Notification)session.get(Notification.class, notification_id);
+												 if(ni != null)
+												 {
+													 if(ni.getUserId().equals(useritem.getId()))
+													 {
+														 session.delete(ni);
+														 
+														 // also remove from user's notification set
+														 Set<String> notificationset = useritem.getNotificationIds();
+														 if(notificationset != null)
+														 {
+															 notificationset.remove(request.getParameter("id"));
+															 if(notificationset.isEmpty())
+																 notificationset = null;
+															 useritem.setNotificationIds(notificationset);
+															 session.save(useritem);
+														 }
+														 // else the notification set was already null, so it wasn't there to begin with
+														 jsonresponse.put("response_status", "success");
+													 }
+													 else
+													 {
+														 jsonresponse.put("message", "You don't own that notification item.");
+														 jsonresponse.put("response_status", "error");
+													 }
+												 }
+												 else
+												 {
+													 jsonresponse.put("response_status", "success"); // if not found, it was never there to begin with, so return success as it is definitely gone
+												 }
+											 }
+											 tx.commit();	
+										}
+										else if (method.equals("removeItemFromNotificationIds"))
+										{
+											tx = session.beginTransaction();
+											 System.out.println("Endpoint.removeItemFromNotificationIds() begin");
+											 String notification_id = request.getParameter("notification_id");
+											 if(notification_id == null || notification_id.isEmpty())
+											 {
+												 jsonresponse.put("message", "notification_id value was null or empty");
+												 jsonresponse.put("response_status", "error");
+											 }
+											 else
+											 {
+												 Set<String> notificationset = useritem.getNotificationIds();
+												 if(notificationset != null)
+												 {
+													 System.out.println("notificationset was not null, size=" + notificationset.size() + " removing "+ notification_id);
+													 Iterator<String> it = notificationset.iterator();
+													 while(it.hasNext())
+													 {
+														 System.out.println(it.next());
+													 }
+													 boolean successful = notificationset.remove(notification_id);
+													 System.out.println("successful=" + successful);
+													 if(notificationset.isEmpty())
+														 notificationset = null;
+													 useritem.setNotificationIds(notificationset);
+													 session.save(useritem);
+												 }
+												 // else notification set was already null, no need to return an error.
+												 jsonresponse.put("response_status", "success");
+											 }
+											 System.out.println("Endpoint.removeItemFromNotificationIds() end");
+											 tx.commit();	
+										}
+										else if (method.equals("getNotificationItem"))
+										{
+											tx = session.beginTransaction();
+											 //System.out.println("Endpoint.getNotificationItem() begin");
+											 String notification_id = request.getParameter("notification_id");
+											 if(notification_id == null)
+											 {
+												 jsonresponse.put("message", "This method requires a notification_id value != null");
+												 jsonresponse.put("response_status", "error"); 
+											 }
+											 else if(notification_id.isEmpty())
+											 {
+												 jsonresponse.put("message", "This method requires a non-empty notification_id value");
+												 jsonresponse.put("response_status", "error"); 
+											 }
+											 else
+											 {
+												 Notification ai = (Notification)session.get(Notification.class, notification_id);
+												 if(ai == null)
+												 {
+													 // No notification with the specified ID exists. 
+													 // If that id is in the user's notification or newsfeed sets, remove it and update user.
+													 boolean saveuser = false;
+													 Set<String> notificationset = useritem.getNotificationIds();
+													 if(notificationset != null && notificationset.contains(notification_id))
+													 {
+														 notificationset.remove(notification_id);
+														 if(notificationset.isEmpty())
+															 notificationset = null;
+														 useritem.setNotificationIds(notificationset);
+														 saveuser = true;
+													 }
+													 Set<String> newsfeedset = useritem.getNewsfeedIds();
+													 if(newsfeedset != null && newsfeedset.contains(notification_id))
+													 {
+														 newsfeedset.remove(notification_id);
+														 if(newsfeedset.isEmpty())
+															 newsfeedset = null;
+														 useritem.setNewsfeedIds(newsfeedset);
+														 saveuser = true;
+													 }
+													 if(saveuser)
+														 session.save(useritem);
+													 jsonresponse.put("message", "No notification with that ID exists.");
+													 jsonresponse.put("response_status", "error"); 
+												 }
+												 else 
+												 {
+													 if(!ai.getUserId().equals(screenname))
+													 {
+														 jsonresponse.put("message", "Permission denied. You're not the owner of this notification.");
+														 jsonresponse.put("response_status", "error"); 
+													 }
+													 else
+													 {
+														 jsonresponse.put("response_status", "success");
+														 jsonresponse.put("notification_jo", ai.getJSON());
+													 }
+												 }
+											 }
+											 //System.out.println("Endpoint.getNotificationItem() end");
+											 tx.commit();	
+										}
+										else if (method.equals("followUser"))
+										{
+											tx = session.beginTransaction();
+											System.out.println("Endpoint.followUser() begin");
+											 String target_screenname = request.getParameter("target_screenname");
+											 if(target_screenname == null)
+											 {
+												 System.out.println("Endpoint.followUser() 0");
+												 jsonresponse.put("message", "This method requires a target_screenname value != null");
+												 jsonresponse.put("response_status", "error"); 
+											 }
+											 else if(target_screenname.isEmpty())
+											 {
+												 System.out.println("Endpoint.followUser() 1");
+												 jsonresponse.put("message", "This method requires a non-empty target_screenname value");
+												 jsonresponse.put("response_status", "error"); 
+											 }
+											 else if(target_screenname.equals(screenname))
+											 {
+												 System.out.println("Endpoint.followUser() 2");
+												 jsonresponse.put("message", "You can't follow yourself.");
+												 jsonresponse.put("response_status", "error"); 
+											 }
+											 else if(useritem.getFollowing() != null && useritem.getFollowing().contains(target_screenname))
+											 {
+												 System.out.println("Endpoint.followUser() 3");
+												 jsonresponse.put("message", "You are already following that user.");
+												 jsonresponse.put("response_status", "error"); 
+											 }
+											 else
+											 {
+												 System.out.println("Endpoint.followUser() 4");
+												 User target_useritem = getUserInDBCreatingIfNotAndFoundWithinHNAPI(target_screenname, session);
+												 if(target_useritem != null)
+												 { 
+													 System.out.println("Endpoint.followUser() 5");
+													 System.out.println(useritem.getId() + " has chosen to follow " + target_useritem.getId());
+													 // create "someone followed you" notification item and add to the user being followed, but only if he/she 
+													 // (a) is registered and (b) has not already notified of this follow
+													 if(target_useritem.getRegistered()) // (a) registered
+													 {	
+														 System.out.println(target_useritem.getId() + " was found in the DB and is registered with Hackbook.");
+														 boolean already_notified = false;
+														 Set<String> notification_item_ts = (Set<String>)target_useritem.getNotificationIds();
+														 if(notification_item_ts == null || notification_item_ts.isEmpty())
+															 already_notified = false;
+														 else
+														 {	 
+															 Iterator<String> it = notification_item_ts.iterator();
+															 Notification ni = null;
+															 String current_notification_id = null;
+															 while(it.hasNext())
+															 {
+																 current_notification_id = it.next();
+																 System.out.println("current_notifcation_id=" + current_notification_id);
+																 ni = (Notification)session.get(Notification.class, current_notification_id);
+																 if(ni.getType().equals("0") && 
+																		 ni.getTriggerer().equals(
+																				 useritem.getId()
+																				 ))
+																 {
+																	 System.out.println("***" + target_useritem.getId() + " has already been notified that " + useritem.getId() + " is following them!");
+																	 already_notified = true;
+																	 break;
+																 }
+															 }
+														 }
+														 
+														 if(!already_notified) // (b) not already notified
+														 { 
+															 long now = System.currentTimeMillis();
+															 String now_str = Global.fromDecimalToBase62(7,now);
+															 Random generator = new Random(); 
+															 int r = generator.nextInt(238327); // this will produce numbers that can be represented by 3 base62 digits
+															 String randompart_str = Global.fromDecimalToBase62(3,r);
+															 String notification_id = now_str + randompart_str + "0"; 
+																
+															 Notification ai = new Notification(); 
+															 ai.setId(notification_id);
+															 ai.setActionMSFE(now);
+															 ai.setMSFE(now);
+															 ai.setUserId(target_useritem.getId());
+															 ai.setType("0");
+															 //ai.setHNTargetId(null);
+															 ai.setTriggerer(useritem.getId());
+															 //ai.setHNRootStoryId();
+															 //ai.setHNRootCommentId();
+															 session.save(ai);
+															 System.out.println("notification item " + notification_id + " has been saved in the db.");
+															 
+															 TreeSet<String> notificationset = new TreeSet<String>();
+															 if(target_useritem.getNotificationIds() != null)
+																 notificationset.addAll(target_useritem.getNotificationIds());
+															 notificationset.add(notification_id);
+															 while(notificationset.size() > Global.NOTIFICATIONS_SIZE_LIMIT)
+														    		notificationset.remove(notificationset.first());
+															 target_useritem.setNotificationIds(notificationset);
+															 target_useritem.setNotificationCount(target_useritem.getNotificationCount()+1);
+														 }
+													 }
+													 else
+													 {
+														 System.out.println(target_useritem.getId() + " was found in the DB but is NOT registered with Hackbook.");
+													 }
+													 
+													 Set<String> followersset = target_useritem.getFollowers();
+													 if(followersset == null)
+														 followersset = new HashSet<String>();
+													 followersset.add(useritem.getId()); // add useritem to the target_useritem's followers list
+													 target_useritem.setFollowers(followersset);
+													 session.save(target_useritem);
+													 System.out.println(target_useritem.getId() + " has been saved with new followers list and notification id (if registered)");
+													 
+													 Set<String> followingset = useritem.getFollowing();
+													 if(followingset == null)
+														 followingset = new HashSet<String>();
+													 followingset.add(target_useritem.getId()); // add target_useritem to the useritem's following list
+													 useritem.setFollowing(followingset);
+													 session.save(useritem);
+													 System.out.println(useritem.getId() + " has been saved with a new following list");
+													 
+													 NewFollowNewsfeedAdjuster nfnfa = new NewFollowNewsfeedAdjuster(useritem.getId(), target_useritem.getId());
+													 System.out.println("Doing it ASYNCHRONOUSLY");
+													 nfnfa.start(); // ASYNCHRONOUSLY put new feed items (triggered by target_useritem) into useritem's feed
+
+													 jsonresponse.put("response_status", "success");
+												 }
+												 else
+												 {
+													 System.out.println("Endpoint.followUser() 6");
+													 jsonresponse.put("message", "Invalid user.");
+													 jsonresponse.put("response_status", "error");  
+												 }
+											 }
+											System.out.println("Endpoint.followUser() end");
+											tx.commit();	
+										}
+										else if (method.equals("unfollowUser"))
+										{
+											tx = session.beginTransaction();
+											 System.out.println("Endpoint.unfollowUser() begin");
+											 String target_screenname = request.getParameter("target_screenname");
+											 User target_useritem = (User)session.get(User.class, target_screenname);
+											 if(target_useritem == null)
+											 {
+												 jsonresponse.put("message", "Can't unfollow user bc they don't exist in the DB.");
+												 jsonresponse.put("response_status", "error");
+											 }
+											 else if(target_screenname.isEmpty())
+											 {
+												 jsonresponse.put("message", "This method requires a non-empty target_screenname value");
+												 jsonresponse.put("response_status", "error"); 
+											 }
+											 else if(target_screenname.equals(screenname))
+											 {
+												 jsonresponse.put("message", "You can't unfollow yourself.");
+												 jsonresponse.put("response_status", "error"); 
+											 }
+											 else
+											 {
+												 System.out.println("inc values ok");
+												 Set<String> followingset = useritem.getFollowing();
+												 if(followingset == null || !followingset.contains(target_screenname))
+												 {
+													 jsonresponse.put("message", "You aren't following that user.");
+													 jsonresponse.put("response_status", "error"); 
+												 }
+												 else
+												 {
+													
+													 System.out.println("You are following that user, so it can be removed right now.");
+													 followingset.remove(target_useritem.getId());
+													 if(followingset.isEmpty())
+														 followingset = null;
+													 useritem.setFollowing(followingset);
+													 
+													 // Go through the user's newsfeed (the user doing the unfollowing), and remove any items by the user they just unfollowed
+													 Set<String> newsfeedset = useritem.getNewsfeedIds();
+													 TreeSet<String> new_newsfeedset = new TreeSet<String>();
+													 if(newsfeedset != null && !newsfeedset.isEmpty())
+													 {
+														 Iterator<String> newsfeed_it = newsfeedset.iterator();
+														 Notification ni = null;
+														 while(newsfeed_it.hasNext())
+														 {	 
+															 ni = (Notification)session.get(Notification.class, newsfeed_it.next());
+															 if(!ni.getTriggerer().equals(target_screenname))
+																 new_newsfeedset.add(ni.getId()); 
+														 }
+														 if(new_newsfeedset.isEmpty())
+															 new_newsfeedset = null;
+														 useritem.setNewsfeedIds(new_newsfeedset);
+													 }
+													 session.save(useritem);
+													 // 1. we don't have to check NotificationIds because this is an unfollow which only affects newsfeed items.
+													 // 2. We don't need to check newsfeed size limit because we're unfollowing. At worst, the size stays the same.
+													
+													 // remove useritem from target_useritem's followers set
+													 Set<String> followersset = target_useritem.getFollowers();
+													 if(followersset != null)
+													 {
+														 followersset.remove(useritem.getId());
+														 if(followersset.isEmpty())
+															 followersset = null;
+														 target_useritem.setFollowers(followersset);
+														 session.save(target_useritem);
+													 }
+													 // don't need to remove anything from notifications because notifications are based on 
+													 // stuff that is done to the user, not who the user is following
+													 jsonresponse.put("response_status", "success");
+												 }
+											 }
+											 System.out.println("Endpoint.unfollowUser() end");
+											 tx.commit();	
+										}
+										else if (method.equals("submitChatMessage"))
+										{
+											
+											String message = request.getParameter("message");
+											 if(message != null && message.isEmpty())
+											 {
+												 jsonresponse.put("message", "Message was empty.");
+												 jsonresponse.put("response_status", "error"); 
+											 }
+											 else
+											 {
+												 tx = session.beginTransaction();
+												 Chat ci = new Chat();
+												 long now0 = System.currentTimeMillis();
+												 String now_str = Global.fromDecimalToBase62(7,now0);
+												 Random generator = new Random(); 
+												 int r = generator.nextInt(238327); // this will produce numbers that can be represented by 3 base62 digits
+												 String randompart_str = Global.fromDecimalToBase62(3,r);
+												 String message_id = now_str + randompart_str;
+												 ci.setId(message_id);
+												 ci.setUserId(useritem.getId());
+												 ci.setHostname("news.ycombinator.com");
+												 ci.setMSFE(now0);
+												 ci.setText(message);
+												 session.save(ci);
+												 tx.commit();
+												 jsonresponse.put("response_status", "success");
+												 
+												 tx = session.beginTransaction();
+												 // if there is valid chat, attach it to the response
+												 HashSet<Chat> chat = getChat(session); // 3 days in minutes
+												 if(!(chat == null || chat.isEmpty()))
+												 { 
+													 Iterator<Chat> chat_it = chat.iterator();
+													 Chat currentitem = null;
+													 JSONArray chat_ja = new JSONArray();
+													 while(chat_it.hasNext())
+													 {
+														 currentitem = chat_it.next();
+														 chat_ja.put(currentitem.getJSON());
+													 }
+													 jsonresponse.put("chat_ja", chat_ja);
+												 }
+												 tx.commit();
+												 
+												 Pattern pattern = Pattern.compile(".*@[A-Za-z_\\-].*");
+												 Matcher matcher = pattern.matcher(message);
+												 
+												 if(matcher.matches())
+												 {
+													 tx = session.beginTransaction();
+													 System.out.println("Chat message from " + useritem.getId() + " contains an @ followed by a [A-Za-z\\-_] char.");
+													 TreeSet<User> mentioned_registered_users = getMentionedUsers(message, useritem, session);
+													 if(mentioned_registered_users != null && !mentioned_registered_users.isEmpty())
+													 {	 
+														 Iterator<User> mentionedusers_it = mentioned_registered_users.iterator();
+														 User mentioneduser = null;
+														 long now1 = 0L;
+														 while(mentionedusers_it.hasNext())
+														 {
+															 mentioneduser = mentionedusers_it.next();
+															 
+															 now1 = System.currentTimeMillis();
+															 now_str = Global.fromDecimalToBase62(7,now1);
+															 r = generator.nextInt(238327); // this will produce numbers that can be represented by 3 base62 digits
+															 randompart_str = Global.fromDecimalToBase62(3,r);
+															 String notification_id = now_str + randompart_str + "C"; 
+																
+															 Notification ai = new Notification(); 
+															 ai.setId(notification_id);
+															 ai.setActionMSFE(now0); // the chat item got added slightly before this notification item.
+															 ai.setMSFE(now1);
+															 ai.setUserId(mentioneduser.getId());
+															 ai.setType("C");
+															 //ai.setHNTargetId(null);
+															 ai.setTriggerer(useritem.getId());
+															 //ai.setHNRootStoryId();
+															 //ai.setHNRootCommentId();
+															 session.save(ai);
+															 
+															 TreeSet<String> notificationset = new TreeSet<String>();
+															 if(mentioneduser.getNotificationIds() != null)
+																 notificationset.addAll(mentioneduser.getNotificationIds());
+															 notificationset.add(notification_id);
+															 while(notificationset.size() > Global.NOTIFICATIONS_SIZE_LIMIT)
+														    		notificationset.remove(notificationset.first());
+															 mentioneduser.setNotificationIds(notificationset);
+															 mentioneduser.setNotificationCount(mentioneduser.getNotificationCount()+1);
+															 session.save(mentioneduser);
+														 }
+													 }
+													 tx.commit();
+												 }
+											 }
+										}
+										else if (method.equals("getChat"))
+										{
+											tx = session.beginTransaction();
+											HashSet<Chat> chat = getChat(session); // 3 days in minutes
+											if(chat == null || chat.isEmpty())
+											{
+												jsonresponse.put("response_status", "success");
+												// successful... just empty. don't put a chat_ja object
+											}
+											else
+											{ 
+												Iterator<Chat> chat_it = chat.iterator();
+												Chat currentitem = null;
+												JSONArray chat_ja = new JSONArray();
+												while(chat_it.hasNext())
+												{
+													currentitem = chat_it.next();
+													chat_ja.put(currentitem.getJSON());
+												}
+												jsonresponse.put("response_status", "success");
+												if(chat_ja.length() > 0)
+													jsonresponse.put("chat_ja", chat_ja);
+											}
+											tx.commit();	
+										}
+									}
+									else // user had an screenname and this_access_token, but they were not valid. Let the frontend know to get rid of them
+									{
+										System.out.println("Endpoint: screenname (" + screenname + ") + access token present, but not valid. method=" + method);
+										jsonresponse.put("response_status", "error");
+										jsonresponse.put("message", "screenname + access token present, but not valid. Please try again.");
+										jsonresponse.put("error_code", "0000");
+									}
+									
 								}
 								catch (Exception e) {
 									if (tx!=null) tx.rollback();
