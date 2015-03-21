@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE hibernate-configuration PUBLIC
+"-//Hibernate/Hibernate Configuration DTD 3.0//EN"
+"http://hibernate.sourceforge.net/hibernate-configuration-3.0.dtd">
+<hibernate-configuration>
+ <session-factory>
+  
+    <property name="connection.url">jdbc:mysql://secure.hackbook.club:3306/hackbook</property>
+    <property name="connection.username">wouldn't you like to know</property>
+    <property name="connection.password">wouldn't you like to know</property>
+    <property name="connection.driver_class">com.mysql.jdbc.Driver</property>
+    <property name="dialect">org.hibernate.dialect.MySQLDialect</property>
+  
+    <property name="show_sql">false</property>
+    <property name="format_sql">true</property>
+    
+    <property name="hbm2ddl.auto">validate</property>
+  
+    <!-- JDBC connection pool (use the built-in) -->
+    <property name="connection.pool_size">10</property>
+    <property name="current_session_context_class">thread</property>
+  	
+    <!-- Disable the second-level cache  -->
+    <property name="cache.provider_class">org.hibernate.cache.internal.NoCacheProvider</property>
+  	
+     <mapping class="club.hackbook.domain.Globalvar" />
+     <mapping class="club.hackbook.domain.Notification" />
+     <mapping class="club.hackbook.domain.User" />
+     <mapping class="club.hackbook.domain.Item" />
+     <mapping class="club.hackbook.domain.Chat" />
+ 
+</session-factory>
+</hibernate-configuration>

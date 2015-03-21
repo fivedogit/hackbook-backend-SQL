@@ -16,14 +16,19 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import javax.naming.InitialContext;
+import javax.naming.NamingException;
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.transaction.SystemException;
+import javax.transaction.UserTransaction;
 
 import org.hibernate.Query;
 import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -38,9 +43,11 @@ public class Endpoint extends HttpServlet {
 
 	// static variables:
 	private static final long serialVersionUID = 1L; 
+	private SessionFactory sessionfactory = null;
 	
 	public void init(ServletConfig servlet_config) throws ServletException {
 		System.out.println("Endpoint.init()");
+		sessionfactory = HibernateUtil.getSessionFactory(); // HibernateUtil will create if it doesn't already exist.
 		super.init(servlet_config);
 	}
 
@@ -243,235 +250,124 @@ public class Endpoint extends HttpServlet {
 			 */
 			if(method.equals("searchForHNItem") || method.equals("searchForHNItem2") || method.equals("searchForHNItem3") || method.equals("getHNAuthToken") || method.equals("verifyHNUser") || method.equals("getMostFollowedUsers") || method.equals("getItem"))
 			{
-				try 
-				{
-					if(method.equals("searchForHNItem"))
+					int indentval = (new Random()).nextInt(10);
+					Global.printThreadHeader(indentval, sessionfactory.getCurrentSession().hashCode(), "Endpoint." + method, "opening");
+					try
 					{
+						sessionfactory.getCurrentSession().beginTransaction();  
+						if(method.equals("searchForHNItem"))
+						{
+								// default to unknown error message
+								jsonresponse.put("response_status", "error");
+								jsonresponse.put("message", "Unknown error");
+								
+								String url_str = request.getParameter("url");
+								if(url_str != null && !url_str.isEmpty())
+								{
+									boolean gotitem = false;
+									Item hnii = null;
+									 
+										 
+										 // If this is a URL of the form https://news.ycombinator.com/item?id=, it's possible the user is viewing a story page on Hacker News.
+										 // This is a special case where we want the button to show the comment count and upon click, show the thread of the item.
+										 // Why? Because viewing the thread in the button will show deleted comments. The thread on this current page (an HN page) will not. 
+										 // so we need to check the URL, extract the item id, and see if it's a story item. If so, return the thread for it.
+										 // 1. https://news.ycombinator.com/item?id=12345678
+										 // 2. item_id = 12345678
+										 // 3. hnii = sesssion.get(Item.class, 12345678)
+										 // 4. if story, return this hnii.getId();
+										 
+										 if(url_str.startsWith("https://news.ycombinator.com/item"))
+										 {
+											 System.out.println("ITEM page!");
+											 URL url_obj = new URL(url_str);
+											 String query = url_obj.getQuery();
+											 String item_id = "";
+											 if(query != null && query.indexOf("id=") > -1)
+											 {
+												 if(query.indexOf("&", query.indexOf("id=")) != -1)
+													 item_id = query.substring(query.indexOf("id=") + 3,query.indexOf("&", query.indexOf("id=")));
+												 else
+													 item_id = query.substring(query.indexOf("id=") + 3);
+												 System.out.println("ITEM_ID=" + item_id);
+												 Item item_obj = (Item)sessionfactory.getCurrentSession().get(Item.class, Long.parseLong(item_id));
+												 if(item_obj != null && item_obj.getType().equals("story"))
+												 {
+													 gotitem = true;
+													 hnii = item_obj;
+												 }
+											 }
+										 } 
+										 
+										 if(gotitem == false)
+										 {	 
+											 HashSet<Item> hnitems = getAllHNItemsFromURL(url_str, sessionfactory.getCurrentSession());
+											 if(hnitems == null)
+												 hnii = null;
+											 else if(hnitems.size() == 1)
+												 hnii = hnitems.iterator().next();
+											 else if(hnitems.size() > 1)
+											 {
+													System.out.println("There are multiple items matching this URL. Selecting the one with the highest score.");
+													Iterator<Item> it = hnitems.iterator();
+													long max = 0; 
+													Item current = null;
+													while(it.hasNext())
+													{
+														current = it.next();
+														if(current.getScore() > max)
+														{
+															hnii = current;
+															max = current.getScore();
+														}
+													}
+											 }
+										 }
+																	
+										 if(hnii != null)
+										 {
+											 jsonresponse.put("response_status", "success");
+											 jsonresponse.remove("message");
+											 jsonresponse.put("objectID", hnii.getId());
+										 }
+										 else
+										 {
+											 jsonresponse.put("response_status", "success");
+											 jsonresponse.remove("message");
+											 jsonresponse.put("objectID", "-1");
+										 }
+									
+								}
+								else
+								{
+									jsonresponse.put("response_status", "error");
+									jsonresponse.put("message", "Invalid \"url\" parameter.");	
+								}
+						}
+						else if(method.equals("searchForHNItem2")) // hashed version
+						{
 							// default to unknown error message
 							jsonresponse.put("response_status", "error");
 							jsonresponse.put("message", "Unknown error");
 							
-							String url_str = request.getParameter("url");
-							if(url_str != null && !url_str.isEmpty())
+							String hashed_url = request.getParameter("hashed_url");
+							if(hashed_url != null && !hashed_url.isEmpty())
 							{
+								System.out.println("hashed_url=" + hashed_url);
 								boolean gotitem = false;
 								Item hnii = null;
-								 
-								Session session = HibernateUtil.getSessionFactory().openSession();
-								int indentval = (new Random()).nextInt(10);
-								Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.searchForHNItem", "opening");
-								Transaction tx = null; 
-								try
-								{
-									 tx = session.beginTransaction();
-									 
-									 // If this is a URL of the form https://news.ycombinator.com/item?id=, it's possible the user is viewing a story page on Hacker News.
-									 // This is a special case where we want the button to show the comment count and upon click, show the thread of the item.
-									 // Why? Because viewing the thread in the button will show deleted comments. The thread on this current page (an HN page) will not. 
-									 // so we need to check the URL, extract the item id, and see if it's a story item. If so, return the thread for it.
-									 // 1. https://news.ycombinator.com/item?id=12345678
-									 // 2. item_id = 12345678
-									 // 3. hnii = sesssion.get(Item.class, 12345678)
-									 // 4. if story, return this hnii.getId();
-									 
-									 if(url_str.startsWith("https://news.ycombinator.com/item"))
-									 {
-										 System.out.println("ITEM page!");
-										 URL url_obj = new URL(url_str);
-										 String query = url_obj.getQuery();
-										 String item_id = "";
-										 if(query != null && query.indexOf("id=") > -1)
-										 {
-											 if(query.indexOf("&", query.indexOf("id=")) != -1)
-												 item_id = query.substring(query.indexOf("id=") + 3,query.indexOf("&", query.indexOf("id=")));
-											 else
-												 item_id = query.substring(query.indexOf("id=") + 3);
-											 System.out.println("ITEM_ID=" + item_id);
-											 Item item_obj = (Item)session.get(Item.class, Long.parseLong(item_id));
-											 if(item_obj != null && item_obj.getType().equals("story"))
-											 {
-												 gotitem = true;
-												 hnii = item_obj;
-											 }
-										 }
-									 } 
-									 
-									 if(gotitem == false)
-									 {	 
-										 HashSet<Item> hnitems = getAllHNItemsFromURL(url_str, session);
-										 if(hnitems == null)
-											 hnii = null;
-										 else if(hnitems.size() == 1)
-											 hnii = hnitems.iterator().next();
-										 else if(hnitems.size() > 1)
-										 {
-												System.out.println("There are multiple items matching this URL. Selecting the one with the highest score.");
-												Iterator<Item> it = hnitems.iterator();
-												long max = 0; 
-												Item current = null;
-												while(it.hasNext())
-												{
-													current = it.next();
-													if(current.getScore() > max)
-													{
-														hnii = current;
-														max = current.getScore();
-													}
-												}
-										 }
-									 }
-																
-									 if(hnii != null)
-									 {
-										 jsonresponse.put("response_status", "success");
-										 jsonresponse.remove("message");
-										 jsonresponse.put("objectID", hnii.getId());
-									 }
-									 else
-									 {
-										 jsonresponse.put("response_status", "success");
-										 jsonresponse.remove("message");
-										 jsonresponse.put("objectID", "-1");
-									 }
-									 tx.commit();
-								}
-								catch (Exception e) {
-									if (tx!=null) tx.rollback();
-									e.printStackTrace();
-								}
-								finally {
-									Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.searchForHNItem", "closing");
-									session.close();
-								}
-							}
-							else
-							{
-								jsonresponse.put("response_status", "error");
-								jsonresponse.put("message", "Invalid \"url\" parameter.");	
-							}
-					}
-					else if(method.equals("searchForHNItem2")) // hashed version
-					{
-						// default to unknown error message
-						jsonresponse.put("response_status", "error");
-						jsonresponse.put("message", "Unknown error");
-						
-						String hashed_url = request.getParameter("hashed_url");
-						if(hashed_url != null && !hashed_url.isEmpty())
-						{
-							System.out.println("hashed_url=" + hashed_url);
-							boolean gotitem = false;
-							Item hnii = null;
-							
-							Session session = HibernateUtil.getSessionFactory().openSession();
-							int indentval = (new Random()).nextInt(10);
-							Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.searchForHNItem", "opening");
-							Transaction tx = null; 
-							try
-							{
-								tx = session.beginTransaction();
 								
-								String hql = "FROM Item as I WHERE '" + hashed_url + "' in elements(I.urlhashes)";
-								Query query = session.createQuery(hql);
-								@SuppressWarnings("unchecked")
-								List<Item> items = query.list();
-								
-								 if(items == null)
-									 hnii = null;
-								 else if(items.size() == 1)
-									 hnii = items.iterator().next();
-								 else if(items.size() > 1)
-								 {
-										System.out.println("There are multiple items matching this URL. Selecting the one with the highest score.");
-										Iterator<Item> it = items.iterator();
-										long max = 0; 
-										Item current = null;
-										while(it.hasNext())
-										{
-											current = it.next();
-											if(current.getScore() > max)
-											{
-												hnii = current;
-												max = current.getScore();
-											}
-										}
-								 }
-								
-								 if(hnii != null)
-								 {
-									 jsonresponse.put("response_status", "success");
-									 jsonresponse.remove("message");
-									 jsonresponse.put("objectID", hnii.getId());
-								 }
-								 else
-								 {
-									 jsonresponse.put("response_status", "success");
-									 jsonresponse.remove("message");
-									 jsonresponse.put("objectID", "-1");
-								 }
-								tx.commit();
-							}
-							catch (Exception e) {
-								if (tx!=null) tx.rollback();
-								e.printStackTrace();
-							}
-							finally {
-								Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.searchForHNItem", "closing");
-								session.close();
-							}
-						}
-						else
-						{
-							jsonresponse.put("response_status", "error");
-							jsonresponse.put("message", "Invalid \"url\" parameter.");	
-						}
-					}
-					else if(method.equals("searchForHNItem3")) // hashed version
-					{
-						// default to unknown error message
-						jsonresponse.put("response_status", "error");
-						jsonresponse.put("message", "Unknown error");
-						
-						String hn_story_id = request.getParameter("hn_story_id");
-						String hashed_url = request.getParameter("hashed_url");
-						
-						if((hn_story_id != null && !hn_story_id.isEmpty()) || (hashed_url != null && !hashed_url.isEmpty())) // either an hn_story_id or hashed_url was supplied
-						{
-							Item hnii = null;
-							
-							Session session = HibernateUtil.getSessionFactory().openSession();
-							int indentval = (new Random()).nextInt(10);
-							Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.searchForHNItem3", "opening");
-							try
-							{ 
-								boolean valid_story_id_was_supplied = false;
-								if(hn_story_id != null && !hn_story_id.isEmpty()) 									// an hn_story_id was supplied
-								{
-									 Item item_obj = (Item)session.get(Item.class, Long.parseLong(hn_story_id));
-									 if(item_obj != null && item_obj.getType().equals("story"))
+									String hql = "FROM Item as I WHERE '" + hashed_url + "' in elements(I.urlhashes)";
+									Query query = sessionfactory.getCurrentSession().createQuery(hql);
+									@SuppressWarnings("unchecked")
+									List<Item> items = query.list();
+									
+									 if(items == null)
+										 hnii = null;
+									 else if(items.size() == 1)
+										 hnii = items.iterator().next();
+									 else if(items.size() > 1)
 									 {
-										 valid_story_id_was_supplied = true;
-										 jsonresponse.put("response_status", "success");
-										 jsonresponse.remove("message");
-										 jsonresponse.put("objectID", item_obj.getId());
-									 }
-								}
-								
-								if(!valid_story_id_was_supplied) 													// either hn_story_id was not supplied or it was not valid.
-								{
-									if(hashed_url != null && !hashed_url.isEmpty())									// there is a (seemingly valid) hashed_url parameter
-									{
-										String hql = "FROM Item as I WHERE '" + hashed_url + "' in elements(I.urlhashes)";
-										Query query = session.createQuery(hql);
-										@SuppressWarnings("unchecked")
-										List<Item> items = query.list();
-										
-										if(items == null)
-											 hnii = null;
-										else if(items.size() == 1)
-											 hnii = items.iterator().next();
-										else if(items.size() > 1)
-										{
 											System.out.println("There are multiple items matching this URL. Selecting the one with the highest score.");
 											Iterator<Item> it = items.iterator();
 											long max = 0; 
@@ -485,351 +381,370 @@ public class Endpoint extends HttpServlet {
 													max = current.getScore();
 												}
 											}
-										}
-										jsonresponse.put("response_status", "success");
-										jsonresponse.remove("message");
-										if(hnii != null)
-											 jsonresponse.put("objectID", hnii.getId());
-										else
-											 jsonresponse.put("objectID", "-1");
-									}
-									else // no valid story id was supplied and the hashed_url was null or empty. This will never happen since hashed_urls are always included. Just respond that this check was a "success" but no item found.
-									{
-										jsonresponse.put("response_status", "success");
-										jsonresponse.remove("message");
-										jsonresponse.put("objectID", "-1");
-									}
-								}
-							}
-							catch (Exception e) {
-								e.printStackTrace();
-							}
-							finally {
-								Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.searchForHNItem3", "closing");
-								session.close();
-							}
-						}
-						else
-						{
-							jsonresponse.put("response_status", "error");
-							jsonresponse.put("message", "Invalid \"hn_story_id\" and \"hashed_url\" parameters.");	
-						}
-					}
-					else if(method.equals("getHNAuthToken")) // user has just chosen to log in with HN. Generate auth token for this screenname, save it, return it.
-					{
-							// FIXME, user could create arbitrary user names in the database with this. They wouldn't be able to register, and there would be no squatting effect, and people can already create arbitrary usernames on HN
-							// but still, this doesn't feel right. There should probably be a check against the HN API right here.
-							String screenname = request.getParameter("screenname");
-							if(screenname == null || screenname.isEmpty())
-							{
-								jsonresponse.put("message", "Screenname was null or empty.");
-								jsonresponse.put("response_status", "error");
+									 }
+									
+									 if(hnii != null)
+									 {
+										 jsonresponse.put("response_status", "success");
+										 jsonresponse.remove("message");
+										 jsonresponse.put("objectID", hnii.getId());
+									 }
+									 else
+									 {
+										 jsonresponse.put("response_status", "success");
+										 jsonresponse.remove("message");
+										 jsonresponse.put("objectID", "-1");
+									 }
 							}
 							else
 							{
-								Session session = HibernateUtil.getSessionFactory().openSession();
-								int indentval = (new Random()).nextInt(10);
-								Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.getHNAuthToken", "opening");
-								Transaction tx = null; 
-								try
-								{
-									// Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.getHNAuthToken", "begintx");
-									 tx = session.beginTransaction();
-									 User useritem = (User)session.get(User.class, screenname);
-									 if(useritem == null)
-									 {
-										 useritem = new User();
-										 useritem.setRegistered(false); 
-									 }
-									 useritem.setId(screenname);
-									 String uuid = UUID.randomUUID().toString().replaceAll("-","");
-									 useritem.setHNAuthToken(uuid);
-									// Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.getHNAuthToken", "saveobj");
-									 session.save(useritem);
-									 jsonresponse.put("response_status", "success");
-									 jsonresponse.put("token", uuid);
-									 // Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.getHNAuthToken", "commit!");
-									 tx.commit();	
-								}
-								catch (Exception e) {
-									if (tx!=null) tx.rollback();
-									e.printStackTrace();
-								}
-								finally {
-									Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.getHNAuthToken", "closing");
-									session.close();
-								}
-							}
-					}
-					else if(method.equals("verifyHNUser")) // Using the generated auth token above, user has changed their "about" page to include the token. Verify it independently.
-					{										// This should probably be triggered by FirebaseListener for optimal performance.
-							String screenname = request.getParameter("screenname");
-							String topcolor = request.getParameter("topcolor");
-							if(screenname == null || screenname.isEmpty())
-							{
-								jsonresponse.put("message", "Screenname was null or empty.");
 								jsonresponse.put("response_status", "error");
+								jsonresponse.put("message", "Invalid \"url\" parameter.");	
 							}
-							else 
+						}
+						else if(method.equals("searchForHNItem3")) // hashed version
+						{
+							// default to unknown error message
+							jsonresponse.put("response_status", "error");
+							jsonresponse.put("message", "Unknown error");
+							
+							String hn_story_id = request.getParameter("hn_story_id");
+							String hashed_url = request.getParameter("hashed_url");
+							
+							if((hn_story_id != null && !hn_story_id.isEmpty()) || (hashed_url != null && !hashed_url.isEmpty())) // either an hn_story_id or hashed_url was supplied
 							{
-								Session session = HibernateUtil.getSessionFactory().openSession();
-								int indentval = (new Random()).nextInt(10);
-								Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.verifyHNUser", "opening");
-								Transaction tx = null; 
-								try
-								{
-									 tx = session.beginTransaction();
-									 User useritem = (User)session.get(User.class, screenname);
-									 if(useritem == null)	// if the user has gotten to verifyHNUser, then the useritem stub should have just been created at getHNAuthToken. Fail if not.
-									 {
-										 jsonresponse.put("message", "No user by that screenname was found in the database.");
-										 jsonresponse.put("response_status", "error");
-									 }
-									 else
-									 {	
-										 String stored_uuid = useritem.getHNAuthToken();
-										 int x = 0;
-										 String result = "";
-										 String about = "";
-										 String checked_uuid = "";
-										 int bi = 0;
-										 int ei = 0;
-										 int limit = 9;
-										 String hn_karma_str = "0";
-										 String hn_since_str = "0";
-										 JSONObject hn_user_jo = null;
-											
-										 // wait 11 seconds to do first try. This helps prevent read or socket timeout errors on tries 0, 1 and 2 which are unlikely to work anyway.
-										 try {
-											 java.lang.Thread.sleep(11000);
-										 } catch (InterruptedException e) {
-											 // TODO Auto-generated catch block
-											 e.printStackTrace();
-										 }
-										 x=2;
-										 while(x < limit) // 2 (11 sec), 3 (16 sec), 4 (21 sec), 5 (26 sec), 6 (31 sec), 7 (36 sec), 8 (41 sec)
+								Item hnii = null;
+								
+									boolean valid_story_id_was_supplied = false;
+									if(hn_story_id != null && !hn_story_id.isEmpty()) 									// an hn_story_id was supplied
+									{
+										 Item item_obj = (Item)sessionfactory.getCurrentSession().get(Item.class, Long.parseLong(hn_story_id));
+										 if(item_obj != null && item_obj.getType().equals("story"))
 										 {
-											 try
+											 valid_story_id_was_supplied = true;
+											 jsonresponse.put("response_status", "success");
+											 jsonresponse.remove("message");
+											 jsonresponse.put("objectID", item_obj.getId());
+										 }
+									}
+									
+									if(!valid_story_id_was_supplied) 													// either hn_story_id was not supplied or it was not valid.
+									{
+										if(hashed_url != null && !hashed_url.isEmpty())									// there is a (seemingly valid) hashed_url parameter
+										{
+											String hql = "FROM Item as I WHERE '" + hashed_url + "' in elements(I.urlhashes)";
+											Query query = sessionfactory.getCurrentSession().createQuery(hql);
+											@SuppressWarnings("unchecked")
+											List<Item> items = query.list();
+											
+											if(items == null)
+												 hnii = null;
+											else if(items.size() == 1)
+												 hnii = items.iterator().next();
+											else if(items.size() > 1)
+											{
+												System.out.println("There are multiple items matching this URL. Selecting the one with the highest score.");
+												Iterator<Item> it = items.iterator();
+												long max = 0; 
+												Item current = null;
+												while(it.hasNext())
+												{
+													current = it.next();
+													if(current.getScore() > max)
+													{
+														hnii = current;
+														max = current.getScore();
+													}
+												}
+											}
+											jsonresponse.put("response_status", "success");
+											jsonresponse.remove("message");
+											if(hnii != null)
+												 jsonresponse.put("objectID", hnii.getId());
+											else
+												 jsonresponse.put("objectID", "-1");
+										}
+										else // no valid story id was supplied and the hashed_url was null or empty. This will never happen since hashed_urls are always included. Just respond that this check was a "success" but no item found.
+										{
+											jsonresponse.put("response_status", "success");
+											jsonresponse.remove("message");
+											jsonresponse.put("objectID", "-1");
+										}
+									}
+							}
+							else
+							{
+								jsonresponse.put("response_status", "error");
+								jsonresponse.put("message", "Invalid \"hn_story_id\" and \"hashed_url\" parameters.");	
+							}
+						}
+						else if(method.equals("getHNAuthToken")) // user has just chosen to log in with HN. Generate auth token for this screenname, save it, return it.
+						{
+								// FIXME, user could create arbitrary user names in the database with this. They wouldn't be able to register, and there would be no squatting effect, and people can already create arbitrary usernames on HN
+								// but still, this doesn't feel right. There should probably be a check against the HN API right here.
+								String screenname = request.getParameter("screenname");
+								if(screenname == null || screenname.isEmpty())
+								{
+									jsonresponse.put("message", "Screenname was null or empty.");
+									jsonresponse.put("response_status", "error");
+								}
+								else
+								{
+								
+										 User useritem = (User)sessionfactory.getCurrentSession().get(User.class, screenname);
+										 if(useritem == null)
+										 {
+											 useritem = new User();
+											 useritem.setRegistered(false); 
+										 }
+										 useritem.setId(screenname);
+										 String uuid = UUID.randomUUID().toString().replaceAll("-","");
+										 useritem.setHNAuthToken(uuid);
+										// Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.getHNAuthToken", "saveobj");
+										 sessionfactory.getCurrentSession().save(useritem);
+										 jsonresponse.put("response_status", "success");
+										 jsonresponse.put("token", uuid);
+										 // Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.getHNAuthToken", "commit!");
+								}
+						}
+						else if(method.equals("verifyHNUser")) // Using the generated auth token above, user has changed their "about" page to include the token. Verify it independently.
+						{										// This should probably be triggered by FirebaseListener for optimal performance.
+								String screenname = request.getParameter("screenname");
+								String topcolor = request.getParameter("topcolor");
+								if(screenname == null || screenname.isEmpty())
+								{
+									jsonresponse.put("message", "Screenname was null or empty.");
+									jsonresponse.put("response_status", "error");
+								}
+								else 
+								{
+										 User useritem = (User)sessionfactory.getCurrentSession().get(User.class, screenname);
+										 if(useritem == null)	// if the user has gotten to verifyHNUser, then the useritem stub should have just been created at getHNAuthToken. Fail if not.
+										 {
+											 jsonresponse.put("message", "No user by that screenname was found in the database.");
+											 jsonresponse.put("response_status", "error");
+										 }
+										 else
+										 {	
+											 String stored_uuid = useritem.getHNAuthToken();
+											 int x = 0;
+											 String result = "";
+											 String about = "";
+											 String checked_uuid = "";
+											 int bi = 0;
+											 int ei = 0;
+											 int limit = 9;
+											 String hn_karma_str = "0";
+											 String hn_since_str = "0";
+											 JSONObject hn_user_jo = null;
+												
+											 // wait 11 seconds to do first try. This helps prevent read or socket timeout errors on tries 0, 1 and 2 which are unlikely to work anyway.
+											 try {
+												 java.lang.Thread.sleep(11000);
+											 } catch (InterruptedException e) {
+												 // TODO Auto-generated catch block
+												 e.printStackTrace();
+											 }
+											 x=2;
+											 while(x < limit) // 2 (11 sec), 3 (16 sec), 4 (21 sec), 5 (26 sec), 6 (31 sec), 7 (36 sec), 8 (41 sec)
 											 {
-												 result = Jsoup
-															 .connect("https://hacker-news.firebaseio.com/v0/user/" + screenname  + ".json")
-															 .userAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.104 Safari/537.36")
-															 .ignoreContentType(true).execute().body();
-													
-												 //System.out.println("Endpoint.verifyHNUser():" + result);
-												 if(result == null || result.equals("null") || result.isEmpty())
+												 try
 												 {
-													 jsonresponse.put("response_status", "error");
-													 jsonresponse.put("message", "Hackbook encountered an error attempting to validate you with the HN API. If you are a new user or one with low karma, the HN API does not recognize you and Hackbook will not be able to verify your account. Sorry.");
-													 break;
-												 }
-												 else
-												 {	
-													 hn_user_jo = new JSONObject(result);
-													 about = hn_user_jo.getString("about");
-													 bi = about.indexOf("BEGIN|");
-													 if(bi != -1)                                   // entering here means the loop WILL break 1 of 3 ways: No |ENDTOKEN, match or no match.
+													 result = Jsoup
+																 .connect("https://hacker-news.firebaseio.com/v0/user/" + screenname  + ".json")
+																 .userAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.104 Safari/537.36")
+																 .ignoreContentType(true).execute().body();
+														
+													 //System.out.println("Endpoint.verifyHNUser():" + result);
+													 if(result == null || result.equals("null") || result.isEmpty())
 													 {
-														 ei = about.indexOf("|END");
-														 if(ei == -1)
+														 jsonresponse.put("response_status", "error");
+														 jsonresponse.put("message", "Hackbook encountered an error attempting to validate you with the HN API. If you are a new user or one with low karma, the HN API does not recognize you and Hackbook will not be able to verify your account. Sorry.");
+														 break;
+													 }
+													 else
+													 {	
+														 hn_user_jo = new JSONObject(result);
+														 about = hn_user_jo.getString("about");
+														 bi = about.indexOf("BEGIN|");
+														 if(bi != -1)                                   // entering here means the loop WILL break 1 of 3 ways: No |ENDTOKEN, match or no match.
 														 {
-															 jsonresponse.put("response_status", "error");
-															 jsonresponse.put("message", "Found \"BEGIN|\" but not \"|END\"");
-															 break;
-														 }
-														 else
-														 {
-															 checked_uuid = about.substring(bi + 6, ei);
-															 if(checked_uuid.equals(stored_uuid))
-															 {	
-																 SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
-																 sdf.setTimeZone(TimeZone.getTimeZone("America/New_York"));
-																 
-																 String uuid_str = UUID.randomUUID().toString().replaceAll("-","");
-																 Calendar cal = Calendar.getInstance();
-																 long now = cal.getTimeInMillis();
-																 cal.add(Calendar.YEAR, 1);
-																 long future = cal.getTimeInMillis();
-																 if(!useritem.getRegistered()) // if user is not yet registered, populate default values
-																 {
-																	 useritem.setNotificationCount(0L);
-																	 useritem.setId(screenname);
-																	 useritem.setSince(now);
-																	 useritem.setSinceHumanReadable(sdf.format(now));
-																	 useritem.setRegistered(true);
-																	 useritem.setURLCheckingMode("stealth");
-																 }
-																 if(topcolor != null && isValidTopcolor(topcolor))
-																	 useritem.setHNTopcolor(topcolor);
-																 else
-																	 useritem.setHNTopcolor("ff6600");
-																 useritem.setSeen(now);
-																 useritem.setSeenHumanReadable(sdf.format(now));
-																 useritem.setThisAccessToken(uuid_str);
-																 useritem.setThisAccessTokenExpires(future);
-																 useritem.setHNAuthToken(null);
-																	
-																 if(hn_user_jo.has("karma")) 
-																 {	
-																	 hn_karma_str = hn_user_jo.getString("karma");
-																	 if(Global.isWholeNumeric(hn_karma_str))
-																		 useritem.setHNKarma(Long.parseLong(hn_karma_str));
-																	 else
-																		 useritem.setHNKarma(0L); // if "karma" is somehow not a whole integer, set to 0
-																 }
-																 else
-																	 useritem.setHNKarma(0L); // if "karma" is somehow missing, set to 0
-
-																 if(hn_user_jo.has("created")) 
-																 {	
-																	 hn_since_str = hn_user_jo.getString("created");
-																	 if(Global.isWholeNumeric(hn_since_str))
-																		 useritem.setHNSince(Long.parseLong(hn_since_str));
-																	 else
-																		 useritem.setHNSince(0L); // if "karma" is somehow not a whole integer, set to 0
-																 }
-																 else
-																	 useritem.setHNSince(0L); // if "karma" is somehow missing, set to 0
-																	
-																 session.save(useritem);
-																	
-																 //System.out.println("Endpoint.loginWithGoogleOrShowRegistration() user already registered, logging in");
-																 jsonresponse.put("response_status", "success");
-																 jsonresponse.put("verified", true);
-																 jsonresponse.put("this_access_token", uuid_str);
-																 jsonresponse.put("screenname", useritem.getId());
+															 ei = about.indexOf("|END");
+															 if(ei == -1)
+															 {
+																 jsonresponse.put("response_status", "error");
+																 jsonresponse.put("message", "Found \"BEGIN|\" but not \"|END\"");
 																 break;
 															 }
 															 else
 															 {
-																 System.out.println("Loop " + x + ", Found BEGIN| and |END, but the string didn't match the DB. Trying again in 5 seconds.");
-																 try {
-																	 java.lang.Thread.sleep(5000);
-																 } catch (InterruptedException e) {
-																	 // TODO Auto-generated catch block
-																	 e.printStackTrace();
+																 checked_uuid = about.substring(bi + 6, ei);
+																 if(checked_uuid.equals(stored_uuid))
+																 {	
+																	 SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
+																	 sdf.setTimeZone(TimeZone.getTimeZone("America/New_York"));
+																	 
+																	 String uuid_str = UUID.randomUUID().toString().replaceAll("-","");
+																	 Calendar cal = Calendar.getInstance();
+																	 long now = cal.getTimeInMillis();
+																	 cal.add(Calendar.YEAR, 1);
+																	 long future = cal.getTimeInMillis();
+																	 if(!useritem.getRegistered()) // if user is not yet registered, populate default values
+																	 {
+																		 useritem.setNotificationCount(0L);
+																		 useritem.setId(screenname);
+																		 useritem.setSince(now);
+																		 useritem.setSinceHumanReadable(sdf.format(now));
+																		 useritem.setRegistered(true);
+																		 useritem.setURLCheckingMode("stealth");
+																	 }
+																	 if(topcolor != null && isValidTopcolor(topcolor))
+																		 useritem.setHNTopcolor(topcolor);
+																	 else
+																		 useritem.setHNTopcolor("ff6600");
+																	 useritem.setSeen(now);
+																	 useritem.setSeenHumanReadable(sdf.format(now));
+																	 useritem.setThisAccessToken(uuid_str);
+																	 useritem.setThisAccessTokenExpires(future);
+																	 useritem.setHNAuthToken(null);
+																		
+																	 if(hn_user_jo.has("karma")) 
+																	 {	
+																		 hn_karma_str = hn_user_jo.getString("karma");
+																		 if(Global.isWholeNumeric(hn_karma_str))
+																			 useritem.setHNKarma(Long.parseLong(hn_karma_str));
+																		 else
+																			 useritem.setHNKarma(0L); // if "karma" is somehow not a whole integer, set to 0
+																	 }
+																	 else
+																		 useritem.setHNKarma(0L); // if "karma" is somehow missing, set to 0
+
+																	 if(hn_user_jo.has("created")) 
+																	 {	
+																		 hn_since_str = hn_user_jo.getString("created");
+																		 if(Global.isWholeNumeric(hn_since_str))
+																			 useritem.setHNSince(Long.parseLong(hn_since_str));
+																		 else
+																			 useritem.setHNSince(0L); // if "karma" is somehow not a whole integer, set to 0
+																	 }
+																	 else
+																		 useritem.setHNSince(0L); // if "karma" is somehow missing, set to 0
+																		
+																	 sessionfactory.getCurrentSession().save(useritem);
+																		
+																	 //System.out.println("Endpoint.loginWithGoogleOrShowRegistration() user already registered, logging in");
+																	 jsonresponse.put("response_status", "success");
+																	 jsonresponse.put("verified", true);
+																	 jsonresponse.put("this_access_token", uuid_str);
+																	 jsonresponse.put("screenname", useritem.getId());
+																	 break;
 																 }
-																 x++;
+																 else
+																 {
+																	 System.out.println("Loop " + x + ", Found BEGIN| and |END, but the string didn't match the DB. Trying again in 5 seconds.");
+																	 try {
+																		 java.lang.Thread.sleep(5000);
+																	 } catch (InterruptedException e) {
+																		 // TODO Auto-generated catch block
+																		 e.printStackTrace();
+																	 }
+																	 x++;
+																 }
 															 }
 														 }
-													 }
-													 else
-													 {
-														 System.out.println("Loop " + x + ", Did not find BEGIN| or |END. Trying again in 5 seconds.");
-														 try {
-															 java.lang.Thread.sleep(5000);
-														 } catch (InterruptedException e) {
-															 // TODO Auto-generated catch block
-															 e.printStackTrace();
+														 else
+														 {
+															 System.out.println("Loop " + x + ", Did not find BEGIN| or |END. Trying again in 5 seconds.");
+															 try {
+																 java.lang.Thread.sleep(5000);
+															 } catch (InterruptedException e) {
+																 // TODO Auto-generated catch block
+																 e.printStackTrace();
+															 }
+															 x++;
 														 }
-														 x++;
 													 }
 												 }
-											 }
-											 catch(IOException ioe)
+												 catch(IOException ioe)
+												 {
+													 System.err.println("IOException attempting to verifyHNUser. Ignore and continue.");
+													 ioe.printStackTrace();
+												 }
+												}
+											 if(x == limit)
 											 {
-												 System.err.println("IOException attempting to verifyHNUser. Ignore and continue.");
-												 ioe.printStackTrace();
+												 System.out.println("Checked " + limit + " times and failed. Returning response_status = error.");
+												 jsonresponse.put("response_status", "error");
+												 jsonresponse.put("message", "Checked " + limit + " times and didn't find \"BEGIN|\"");
 											 }
-											}
-										 if(x == limit)
-										 {
-											 System.out.println("Checked " + limit + " times and failed. Returning response_status = error.");
-											 jsonresponse.put("response_status", "error");
-											 jsonresponse.put("message", "Checked " + limit + " times and didn't find \"BEGIN|\"");
 										 }
+								}
+						}
+						else if(method.equals("getMostFollowedUsers"))
+						{
+									 Globalvar gvi = (Globalvar)sessionfactory.getCurrentSession().get(Globalvar.class, "most_followed_users");
+									 if(gvi != null)
+									 {
+										 jsonresponse.put("response_status", "success");
+										 jsonresponse.put("most_followed_users", new JSONArray(gvi.getStringValue()));
 									 }
-									 tx.commit();	
-								}
-								catch (Exception e) {
-									if (tx!=null) tx.rollback();
-									e.printStackTrace();
-								}
-								finally {
-									Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.verifyHNUser", "closing");
-									session.close();
-								}
-							}
-					}
-					else if(method.equals("getMostFollowedUsers"))
-					{
-							Session session = HibernateUtil.getSessionFactory().openSession();
-							int indentval = (new Random()).nextInt(10);
-							Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.getMostFollowedUsers", "opening");
-							Transaction tx = null; 
-							try
-							{
-								 tx = session.beginTransaction();
-								 Globalvar gvi = (Globalvar)session.get(Globalvar.class, "most_followed_users");
-								 if(gvi != null)
-								 {
-									 jsonresponse.put("response_status", "success");
-									 jsonresponse.put("most_followed_users", new JSONArray(gvi.getStringValue()));
-								 }
-								 else
-								 {
-									 jsonresponse.put("response_status", "error");
-									 jsonresponse.put("message", "Couldn't get most_followed_users value from DB.");
-								 }
-								 tx.commit();	
-							}
-							catch (Exception e) {
-								if (tx!=null) tx.rollback();
-								e.printStackTrace();
-							}
-							finally {
-								Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.getMostFollowedUsers", "closing");
-								session.close();
-							}		
-					}
-					else if(method.equals("getItem"))
-					{
-							String id = request.getParameter("id");
-							if(id == null || id.isEmpty() || !Global.isWholeNumeric(id))
-							{
-								jsonresponse.put("message", "id value was null, empty or invalid");
-								jsonresponse.put("response_status", "error");
-							}
-							else
-							{
-								Session session = HibernateUtil.getSessionFactory().openSession();
-								int indentval = (new Random()).nextInt(10);
-								Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.getItem", "opening");
-								Transaction tx = null; 
-								try
+									 else
+									 {
+										 jsonresponse.put("response_status", "error");
+										 jsonresponse.put("message", "Couldn't get most_followed_users value from DB.");
+									 }
+						}
+						else if(method.equals("getItem"))
+						{
+								String id = request.getParameter("id");
+								if(id == null || id.isEmpty() || !Global.isWholeNumeric(id))
 								{
-									 tx = session.beginTransaction();
-									Item item = (Item)session.get(Item.class, Long.parseLong(id));
-									if(item != null)
-									{
-										jsonresponse.put("response_status", "success");
-										jsonresponse.put("item_jo", item.getJSON());
-									}
-									else
-									{
-										jsonresponse.put("response_status", "error");
-										jsonresponse.put("message", "Item does not exist in the DB.");
-									}
-									tx.commit();
+									jsonresponse.put("message", "id value was null, empty or invalid");
+									jsonresponse.put("response_status", "error");
 								}
-								catch (Exception e) {
-									if (tx!=null) tx.rollback();
-									e.printStackTrace();
+								else
+								{
+										Item item = (Item)sessionfactory.getCurrentSession().get(Item.class, Long.parseLong(id));
+										if(item != null)
+										{
+											jsonresponse.put("response_status", "success");
+											jsonresponse.put("item_jo", item.getJSON());
+										}
+										else
+										{
+											jsonresponse.put("response_status", "error");
+											jsonresponse.put("message", "Item does not exist in the DB.");
+										}
 								}
-								finally {
-									Global.printThreadHeader(indentval, session.hashCode(), "Endpoint.getItem", "closing");
-									session.close();
-								}		
-							}
+						}
+						
+						sessionfactory.getCurrentSession().flush();
+						sessionfactory.getCurrentSession().getTransaction().commit();
 					}
-				}
-				catch(JSONException jsone)
-				{
-					out.println("{ \"response_status\": \"error\", \"message\": \"JSONException caught in Endpoint GET non-auth methods. method=" + method + "\"}");
-					System.err.println("endpoint: JSONException thrown in Endpoint GET non-auth methods. " + jsone.getMessage());
-					jsone.printStackTrace();
-					return;
-				}	
+					catch(JSONException jsone)
+					{
+						out.println("{ \"response_status\": \"error\", \"message\": \"JSONException caught in Endpoint GET non-auth methods. method=" + method + "\"}");
+						System.err.println("endpoint: JSONException thrown in Endpoint GET non-auth methods. " + jsone.getMessage());
+						jsone.printStackTrace();
+						return;
+					}	
+					catch (Exception e) {
+						if ( sessionfactory.getCurrentSession().getTransaction()!=null)
+							try {
+								 sessionfactory.getCurrentSession().getTransaction().rollback();
+							} catch (IllegalStateException e1) {
+								// TODO Auto-generated catch block
+								e1.printStackTrace();
+							} catch (SecurityException e1) {
+								// TODO Auto-generated catch block
+								e1.printStackTrace();
+							} 
+						e.printStackTrace();
+					}
+					finally {
+						Global.printThreadHeader(indentval, sessionfactory.getCurrentSession().hashCode(), "Endpoint.searchForHNItem", "closing");
+						sessionfactory.getCurrentSession().close();
+					}
 			}
 			 /***
 			  *    ___  ___ _____ _____ _   _ ___________  _____  ______ _____ _____     _   _ _____ ___________    ___  _   _ _____ _   _ 
@@ -859,16 +774,13 @@ public class Endpoint extends HttpServlet {
 							if(!(screenname == null || screenname.isEmpty()))
 							{
 								// otherwise, continue to user retrieval
-								Session session = null;
-								Transaction tx = null; 
 								int indentval = (new Random()).nextInt(10);
 								try
 								{
-									session = HibernateUtil.getSessionFactory().openSession();
-									session.clear();
-									Global.printThreadHeader(indentval, session.hashCode(), "Endpoint." + method, "opening");
+									sessionfactory.getCurrentSession().beginTransaction();  
+									Global.printThreadHeader(indentval, sessionfactory.getCurrentSession().hashCode(), "Endpoint." + method, "opening");
 									
-									User useritem = (User)session.get(User.class, screenname);
+									User useritem = (User)sessionfactory.getCurrentSession().get(User.class, screenname);
 									if(useritem != null)
 										user_is_valid = useritem.isValid(this_access_token);
 									else // couldn't get useritem from provided screenname
@@ -883,7 +795,6 @@ public class Endpoint extends HttpServlet {
 									{
 										if (method.equals("getUserSelf")) // I think this might be redundant (or maybe the one below is)
 										{
-											tx = session.beginTransaction();
 											boolean something_needs_updating = false;
 											
 											// check ext version as reported by user.
@@ -931,12 +842,12 @@ public class Endpoint extends HttpServlet {
 															if(change > 0L)
 															{
 																System.out.println("\tcalling createNotification for positive change.");
-																fcp.createNotification(useritem, "1", 0L, System.currentTimeMillis(), null, change, session); // feedable event 1, positive karma change
+																fcp.createNotification(useritem, "1", 0L, System.currentTimeMillis(), null, change, sessionfactory.getCurrentSession()); // feedable event 1, positive karma change
 															}
 															else if(change < 0L)				
 															{
 																System.out.println("\tcalling createNotification for negative change.");
-																fcp.createNotification(useritem, "2", 0L, System.currentTimeMillis(), null, change, session); // feedable event 2, negative karma change
+																fcp.createNotification(useritem, "2", 0L, System.currentTimeMillis(), null, change, sessionfactory.getCurrentSession()); // feedable event 2, negative karma change
 															}
 															useritem.setHNKarma(hn_user_jo.getLong("karma"));
 															useritem.setLastKarmaPoolDrain(System.currentTimeMillis());
@@ -953,20 +864,19 @@ public class Endpoint extends HttpServlet {
 											}
 
 											if(something_needs_updating)
-												session.save(useritem);
+												sessionfactory.getCurrentSession().save(useritem);
 											
 											user_jo = useritem.getJSON();
 											
-											Globalvar gvi = (Globalvar)session.get(Globalvar.class, "latest_ext_version");
+											Globalvar gvi = (Globalvar)sessionfactory.getCurrentSession().get(Globalvar.class, "latest_ext_version");
 											if(gvi != null)
 												jsonresponse.put("latest_ext_version", gvi.getStringValue());
 											jsonresponse.put("response_status", "success");
 											jsonresponse.put("user_jo", user_jo);	
-											tx.commit();	
+												
 										}
 										else if (method.equals("setUserPreference")) // email, this_access_token, target_email (of user to get) // also an admin method
 										{
-											tx = session.beginTransaction();
 											 String which = request.getParameter("which");
 											 String value = request.getParameter("value");
 											 if(which == null || value == null)
@@ -984,7 +894,7 @@ public class Endpoint extends HttpServlet {
 														 useritem.setURLCheckingMode("notifications_only");
 													 else // this is an error, default to 450
 														 useritem.setURLCheckingMode("stealth");
-													 session.save(useritem);
+													 sessionfactory.getCurrentSession().save(useritem);
 													 jsonresponse.put("response_status", "success"); 
 												 }
 												 else if(which.equals("notification_mode")) 
@@ -993,7 +903,7 @@ public class Endpoint extends HttpServlet {
 														 useritem.setNotificationMode("notifications_only");
 													 else if(value.equals("newsfeed_and_notifications"))
 														 useritem.setNotificationMode("newsfeed_and_notifications");
-													 session.save(useritem);
+													 sessionfactory.getCurrentSession().save(useritem);
 													 jsonresponse.put("response_status", "success"); 
 												 }
 												 else if(which.equals("karma_pool_ttl")) 
@@ -1014,7 +924,7 @@ public class Endpoint extends HttpServlet {
 														 else
 														 {
 															 useritem.setKarmaPoolTTLMins(val);
-															 session.save(useritem);
+															 sessionfactory.getCurrentSession().save(useritem);
 															 jsonresponse.put("response_status", "success"); 
 														 }
 													 }
@@ -1044,7 +954,7 @@ public class Endpoint extends HttpServlet {
 															 else
 																 useritem.setHidePromoLinks(true);
 														 }
-														 session.save(useritem);
+														 sessionfactory.getCurrentSession().save(useritem);
 													 }
 													 else
 													 {
@@ -1058,33 +968,30 @@ public class Endpoint extends HttpServlet {
 													 jsonresponse.put("response_status", "error");
 												 }
 											 }
-											 tx.commit();	
+											 	
 										}
 										else if (method.equals("resetNotificationCount"))
 										{
-											tx = session.beginTransaction();
 											 //System.out.println("Endpoint resetNotificationCount() begin);
 											 useritem.setNotificationCount(0L);
-											 session.save(useritem);
+											 sessionfactory.getCurrentSession().save(useritem);
 											 jsonresponse.put("message", "Notification count successfully reset."); 
 											 jsonresponse.put("response_status", "success");
 											//System.out.println("Endpoint resetNotificationCount() end);
-											 tx.commit();	
+											 	
 										}
 										else if (method.equals("resetNewsfeedCount"))
 										{
-											tx = session.beginTransaction();
 											 //System.out.println("Endpoint resetNewsfeedCount() begin);
 											 useritem.setNewsfeedCount(0L);
-											 session.save(useritem);
+											 sessionfactory.getCurrentSession().save(useritem);
 											 jsonresponse.put("message", "Newsfeed count successfully reset."); 
 											 jsonresponse.put("response_status", "success");
 											//System.out.println("Endpoint resetNewsfeedCount() end);
-											 tx.commit();	
+											 	
 										}
 										else if (method.equals("deleteNotification"))
 										{
-											tx = session.beginTransaction();
 											 String notification_id = request.getParameter("notification_id");
 											 if(notification_id == null || notification_id.isEmpty())
 											 {
@@ -1093,12 +1000,12 @@ public class Endpoint extends HttpServlet {
 											 }
 											 else
 											 {
-												 Notification ni = (Notification)session.get(Notification.class, notification_id);
+												 Notification ni = (Notification)sessionfactory.getCurrentSession().get(Notification.class, notification_id);
 												 if(ni != null)
 												 {
 													 if(ni.getUserId().equals(useritem.getId()))
 													 {
-														 session.delete(ni);
+														 sessionfactory.getCurrentSession().delete(ni);
 														 
 														 // also remove from user's notification set
 														 Set<String> notificationset = useritem.getNotificationIds();
@@ -1108,7 +1015,7 @@ public class Endpoint extends HttpServlet {
 															 if(notificationset.isEmpty())
 																 notificationset = null;
 															 useritem.setNotificationIds(notificationset);
-															 session.save(useritem);
+															 sessionfactory.getCurrentSession().save(useritem);
 														 }
 														 // else the notification set was already null, so it wasn't there to begin with
 														 jsonresponse.put("response_status", "success");
@@ -1124,11 +1031,10 @@ public class Endpoint extends HttpServlet {
 													 jsonresponse.put("response_status", "success"); // if not found, it was never there to begin with, so return success as it is definitely gone
 												 }
 											 }
-											 tx.commit();	
+											 	
 										}
 										else if (method.equals("removeItemFromNotificationIds"))
 										{
-											tx = session.beginTransaction();
 											 System.out.println("Endpoint.removeItemFromNotificationIds() begin");
 											 String notification_id = request.getParameter("notification_id");
 											 if(notification_id == null || notification_id.isEmpty())
@@ -1152,17 +1058,16 @@ public class Endpoint extends HttpServlet {
 													 if(notificationset.isEmpty())
 														 notificationset = null;
 													 useritem.setNotificationIds(notificationset);
-													 session.save(useritem);
+													 sessionfactory.getCurrentSession().save(useritem);
 												 }
 												 // else notification set was already null, no need to return an error.
 												 jsonresponse.put("response_status", "success");
 											 }
 											 System.out.println("Endpoint.removeItemFromNotificationIds() end");
-											 tx.commit();	
+											 	
 										}
 										else if (method.equals("getNotificationItem"))
 										{
-											tx = session.beginTransaction();
 											 //System.out.println("Endpoint.getNotificationItem() begin");
 											 String notification_id = request.getParameter("notification_id");
 											 if(notification_id == null)
@@ -1177,7 +1082,7 @@ public class Endpoint extends HttpServlet {
 											 }
 											 else
 											 {
-												 Notification ai = (Notification)session.get(Notification.class, notification_id);
+												 Notification ai = (Notification)sessionfactory.getCurrentSession().get(Notification.class, notification_id);
 												 if(ai == null)
 												 {
 													 // No notification with the specified ID exists. 
@@ -1202,7 +1107,7 @@ public class Endpoint extends HttpServlet {
 														 saveuser = true;
 													 }
 													 if(saveuser)
-														 session.save(useritem);
+														 sessionfactory.getCurrentSession().save(useritem);
 													 jsonresponse.put("message", "No notification with that ID exists.");
 													 jsonresponse.put("response_status", "error"); 
 												 }
@@ -1221,11 +1126,10 @@ public class Endpoint extends HttpServlet {
 												 }
 											 }
 											 //System.out.println("Endpoint.getNotificationItem() end");
-											 tx.commit();	
+											 	
 										}
 										else if (method.equals("followUser"))
 										{
-											tx = session.beginTransaction();
 											System.out.println("Endpoint.followUser() begin");
 											 String target_screenname = request.getParameter("target_screenname");
 											 if(target_screenname == null)
@@ -1255,7 +1159,7 @@ public class Endpoint extends HttpServlet {
 											 else
 											 {
 												 System.out.println("Endpoint.followUser() 4");
-												 User target_useritem = getUserInDBCreatingIfNotAndFoundWithinHNAPI(target_screenname, session);
+												 User target_useritem = getUserInDBCreatingIfNotAndFoundWithinHNAPI(target_screenname, sessionfactory.getCurrentSession());
 												 if(target_useritem != null)
 												 { 
 													 System.out.println("Endpoint.followUser() 5");
@@ -1278,7 +1182,7 @@ public class Endpoint extends HttpServlet {
 															 {
 																 current_notification_id = it.next();
 																 System.out.println("current_notifcation_id=" + current_notification_id);
-																 ni = (Notification)session.get(Notification.class, current_notification_id);
+																 ni = (Notification)sessionfactory.getCurrentSession().get(Notification.class, current_notification_id);
 																 if(ni.getType().equals("0") && 
 																		 ni.getTriggerer().equals(
 																				 useritem.getId()
@@ -1310,7 +1214,7 @@ public class Endpoint extends HttpServlet {
 															 ai.setTriggerer(useritem.getId());
 															 //ai.setHNRootStoryId();
 															 //ai.setHNRootCommentId();
-															 session.save(ai);
+															 sessionfactory.getCurrentSession().save(ai);
 															 System.out.println("notification item " + notification_id + " has been saved in the db.");
 															 
 															 TreeSet<String> notificationset = new TreeSet<String>();
@@ -1333,7 +1237,7 @@ public class Endpoint extends HttpServlet {
 														 followersset = new HashSet<String>();
 													 followersset.add(useritem.getId()); // add useritem to the target_useritem's followers list
 													 target_useritem.setFollowers(followersset);
-													 session.save(target_useritem);
+													 sessionfactory.getCurrentSession().save(target_useritem);
 													 System.out.println(target_useritem.getId() + " has been saved with new followers list and notification id (if registered)");
 													 
 													 Set<String> followingset = useritem.getFollowing();
@@ -1341,7 +1245,7 @@ public class Endpoint extends HttpServlet {
 														 followingset = new HashSet<String>();
 													 followingset.add(target_useritem.getId()); // add target_useritem to the useritem's following list
 													 useritem.setFollowing(followingset);
-													 session.save(useritem);
+													 sessionfactory.getCurrentSession().save(useritem);
 													 System.out.println(useritem.getId() + " has been saved with a new following list");
 													 
 													 NewFollowNewsfeedAdjuster nfnfa = new NewFollowNewsfeedAdjuster(useritem.getId(), target_useritem.getId());
@@ -1358,14 +1262,13 @@ public class Endpoint extends HttpServlet {
 												 }
 											 }
 											System.out.println("Endpoint.followUser() end");
-											tx.commit();	
+												
 										}
 										else if (method.equals("unfollowUser"))
 										{
-											tx = session.beginTransaction();
 											 System.out.println("Endpoint.unfollowUser() begin");
 											 String target_screenname = request.getParameter("target_screenname");
-											 User target_useritem = (User)session.get(User.class, target_screenname);
+											 User target_useritem = (User)sessionfactory.getCurrentSession().get(User.class, target_screenname);
 											 if(target_useritem == null)
 											 {
 												 jsonresponse.put("message", "Can't unfollow user bc they don't exist in the DB.");
@@ -1408,7 +1311,7 @@ public class Endpoint extends HttpServlet {
 														 Notification ni = null;
 														 while(newsfeed_it.hasNext())
 														 {	 
-															 ni = (Notification)session.get(Notification.class, newsfeed_it.next());
+															 ni = (Notification)sessionfactory.getCurrentSession().get(Notification.class, newsfeed_it.next());
 															 if(!ni.getTriggerer().equals(target_screenname))
 																 new_newsfeedset.add(ni.getId()); 
 														 }
@@ -1416,7 +1319,7 @@ public class Endpoint extends HttpServlet {
 															 new_newsfeedset = null;
 														 useritem.setNewsfeedIds(new_newsfeedset);
 													 }
-													 session.save(useritem);
+													 sessionfactory.getCurrentSession().save(useritem);
 													 // 1. we don't have to check NotificationIds because this is an unfollow which only affects newsfeed items.
 													 // 2. We don't need to check newsfeed size limit because we're unfollowing. At worst, the size stays the same.
 													
@@ -1428,7 +1331,7 @@ public class Endpoint extends HttpServlet {
 														 if(followersset.isEmpty())
 															 followersset = null;
 														 target_useritem.setFollowers(followersset);
-														 session.save(target_useritem);
+														 sessionfactory.getCurrentSession().save(target_useritem);
 													 }
 													 // don't need to remove anything from notifications because notifications are based on 
 													 // stuff that is done to the user, not who the user is following
@@ -1436,7 +1339,7 @@ public class Endpoint extends HttpServlet {
 												 }
 											 }
 											 System.out.println("Endpoint.unfollowUser() end");
-											 tx.commit();	
+											 	
 										}
 										else if (method.equals("submitChatMessage"))
 										{
@@ -1449,7 +1352,6 @@ public class Endpoint extends HttpServlet {
 											 }
 											 else
 											 {
-												 tx = session.beginTransaction();
 												 Chat ci = new Chat();
 												 long now0 = System.currentTimeMillis();
 												 String now_str = Global.fromDecimalToBase62(7,now0);
@@ -1462,13 +1364,12 @@ public class Endpoint extends HttpServlet {
 												 ci.setHostname("news.ycombinator.com");
 												 ci.setMSFE(now0);
 												 ci.setText(message);
-												 session.save(ci);
-												 tx.commit();
+												 sessionfactory.getCurrentSession().save(ci);
+												 
 												 jsonresponse.put("response_status", "success");
 												 
-												 tx = session.beginTransaction();
 												 // if there is valid chat, attach it to the response
-												 HashSet<Chat> chat = getChat(session); // 3 days in minutes
+												 HashSet<Chat> chat = getChat(sessionfactory.getCurrentSession()); // 3 days in minutes
 												 if(!(chat == null || chat.isEmpty()))
 												 { 
 													 Iterator<Chat> chat_it = chat.iterator();
@@ -1481,16 +1382,15 @@ public class Endpoint extends HttpServlet {
 													 }
 													 jsonresponse.put("chat_ja", chat_ja);
 												 }
-												 tx.commit();
+												 
 												 
 												 Pattern pattern = Pattern.compile(".*@[A-Za-z_\\-].*");
 												 Matcher matcher = pattern.matcher(message);
 												 
 												 if(matcher.matches())
 												 {
-													 tx = session.beginTransaction();
 													 System.out.println("Chat message from " + useritem.getId() + " contains an @ followed by a [A-Za-z\\-_] char.");
-													 TreeSet<User> mentioned_registered_users = getMentionedUsers(message, useritem, session);
+													 TreeSet<User> mentioned_registered_users = getMentionedUsers(message, useritem, sessionfactory.getCurrentSession());
 													 if(mentioned_registered_users != null && !mentioned_registered_users.isEmpty())
 													 {	 
 														 Iterator<User> mentionedusers_it = mentioned_registered_users.iterator();
@@ -1516,7 +1416,7 @@ public class Endpoint extends HttpServlet {
 															 ai.setTriggerer(useritem.getId());
 															 //ai.setHNRootStoryId();
 															 //ai.setHNRootCommentId();
-															 session.save(ai);
+															 sessionfactory.getCurrentSession().save(ai);
 															 
 															 TreeSet<String> notificationset = new TreeSet<String>();
 															 if(mentioneduser.getNotificationIds() != null)
@@ -1526,17 +1426,16 @@ public class Endpoint extends HttpServlet {
 														    		notificationset.remove(notificationset.first());
 															 mentioneduser.setNotificationIds(notificationset);
 															 mentioneduser.setNotificationCount(mentioneduser.getNotificationCount()+1);
-															 session.save(mentioneduser);
+															 sessionfactory.getCurrentSession().save(mentioneduser);
 														 }
 													 }
-													 tx.commit();
+													 
 												 }
 											 }
 										}
 										else if (method.equals("getChat"))
 										{
-											tx = session.beginTransaction();
-											HashSet<Chat> chat = getChat(session); // 3 days in minutes
+											HashSet<Chat> chat = getChat(sessionfactory.getCurrentSession()); // 3 days in minutes
 											if(chat == null || chat.isEmpty())
 											{
 												jsonresponse.put("response_status", "success");
@@ -1556,7 +1455,6 @@ public class Endpoint extends HttpServlet {
 												if(chat_ja.length() > 0)
 													jsonresponse.put("chat_ja", chat_ja);
 											}
-											tx.commit();	
 										}
 									}
 									else // user had an screenname and this_access_token, but they were not valid. Let the frontend know to get rid of them
@@ -1566,15 +1464,27 @@ public class Endpoint extends HttpServlet {
 										jsonresponse.put("message", "screenname + access token present, but not valid. Please try again.");
 										jsonresponse.put("error_code", "0000");
 									}
-									
+									sessionfactory.getCurrentSession().flush();
+									sessionfactory.getCurrentSession().getTransaction().commit();
 								}
 								catch (Exception e) {
-									if (tx!=null) tx.rollback();
+									if (sessionfactory.getCurrentSession().getTransaction()!=null) 
+									{
+										try {
+											sessionfactory.getCurrentSession().getTransaction().rollback();
+										} catch (IllegalStateException e1) {
+											// TODO Auto-generated catch block
+											e1.printStackTrace();
+										} catch (SecurityException e1) {
+											// TODO Auto-generated catch block
+											e1.printStackTrace();
+										} 
+									}
 									e.printStackTrace();
 								}
 								finally {
-									Global.printThreadHeader(indentval, session.hashCode(), "Endpoint." + method, "closing");
-									session.close();
+									Global.printThreadHeader(indentval, sessionfactory.getCurrentSession().hashCode(), "Endpoint." + method, "closing");
+									sessionfactory.getCurrentSession().close();
 								}		
 						 	}
 						 	else // either screenname or tat was null, but not both
@@ -1598,7 +1508,7 @@ public class Endpoint extends HttpServlet {
 					 System.err.println("endpoint: JSONException thrown in Endpoint GET methods requiring user auth. " + jsone.getMessage());
 					 jsone.printStackTrace();
 					 return;
-				 }	
+				 } 
 			 }
 			 else
 			 {
